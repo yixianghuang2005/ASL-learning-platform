@@ -13,13 +13,15 @@ import base64
 import numpy as np
 import cv2
 from ultralytics import YOLO
+import torch
+torch.serialization.add_safe_globals = lambda globals_list: None
 
 
 class SignDetector:
     """YOLOv8 手語辨識器"""
 
     # TODO: 組員 A 替換為訓練好的完整手語標籤清單（需與 best.pt 順序一致）
-    CLASS_NAMES = ["你好", "謝謝", "對不起", "我愛你", "再見"]
+    CLASS_NAMES = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z","nothing"]
 
     def __init__(
         self,
@@ -37,8 +39,11 @@ class SignDetector:
         self.iou_threshold = iou_threshold
 
         # TODO: 載入模型
+        import torch
+        from ultralytics.nn.tasks import DetectionModel
+        torch.serialization.add_safe_globals([DetectionModel])
         self.model = YOLO(model_path)
-        self.model.fuse()  # 融合層加速推論
+        self.model.fuse()
 
     def predict(self, base64_image: str) -> list[dict]:
         """

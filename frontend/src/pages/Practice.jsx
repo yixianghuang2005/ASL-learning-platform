@@ -1,59 +1,138 @@
-// 🏋️ Practice.jsx
-// 【組員 B 主要負責】
-// 功能：練習室主頁面，整合 Webcam 辨識 + 即時回饋 + 儲存紀錄（呼叫組員 C 的 Firebase 函式）
-//
-// TODO 清單：
-//   1. 從 URL params 取得目標練習單字（例如 /practice?word=你好）
-//   2. 顯示目標手語的示範圖片
-//   3. 嵌入 <VideoCapture> 元件，接收辨識結果
-//   4. 判斷辨識結果是否符合目標，給予視覺回饋（✅ / ❌）
-//   5. 累積準確率，練習結束後呼叫 saveProgress 儲存
-//   6. 顯示辨識信心值的進度條
-
-import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+// 🏋️ Practice.jsx — 字母闖關模式
+import React, { useState, useRef } from 'react';
 import VideoCapture from '../components/VideoCapture';
-import { saveProgress } from '../services/firebaseClient';
-// import { auth } from '../services/firebaseClient';  // 用於取得 currentUser
+
+const LETTERS = ['A','B','C','D','E','F','G','H','I','J','K','L','M',
+                 'N','O','P','Q','R','S','T','U','V','W','X','Y','Z'];
 
 const Practice = () => {
-  const [searchParams] = useSearchParams();
-  const targetWord = searchParams.get('word') || '你好'; // 預設練習「你好」
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [completed, setCompleted] = useState([]);
+  const [result, setLastResult] = useState(null);
+  const [isCorrect, setIsCorrect] = useState(null);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [finished, setFinished] = useState(false);
+  const cooldownRef = useRef(false);
 
-  const [result, setResult] = useState(null);      // { label, confidence, bbox }
-  const [isCorrect, setIsCorrect] = useState(null); // true / false / null
+  const targetLetter = LETTERS[currentIdx];
 
-  // TODO: 接收 VideoCapture 的辨識結果，判斷是否正確
-  const handleResult = (detectionResult) => {
-    setResult(detectionResult);
-    setIsCorrect(detectionResult.label === targetWord);
+  const handleResult = (detection) => {
+    if (!detection || cooldownRef.current) return;
+    setLastResult(detection);
 
-    // TODO: 達到一定準確率後，呼叫 saveProgress
-    // const uid = auth.currentUser?.uid;
-    // if (uid) saveProgress(uid, targetWord, detectionResult.confidence * 100);
+    if (detection.label === targetLetter && detection.confidence >= 0.6) {
+      setIsCorrect(true);
+      setShowSuccess(true);
+      cooldownRef.current = true;
+
+      setTimeout(() => {
+        setCompleted(prev => [...prev, targetLetter]);
+        const next = currentIdx + 1;
+        if (next >= LETTERS.length) {
+          setFinished(true);
+        } else {
+          setCurrentIdx(next);
+          setLastResult(null);
+          setIsCorrect(null);
+          setShowSuccess(false);
+        }
+        cooldownRef.current = false;
+      }, 1500);
+    } else {
+      setIsCorrect(false);
+    }
   };
 
-  return (
-    <div style={{ padding: 24 }}>
-      <h2>🤟 練習：{targetWord}</h2>
+  if (finished) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center' }}>
+        <div style={{ fontSize: 64 }}>🎉</div>
+        <h2>恭喜完成所有 26 個字母！</h2>
+        <p style={{ color: '#666' }}>你已成功辨識 A 到 Z 所有 ASL 手語字母</p>
+        <button onClick={() => { setCurrentIdx(0); setCompleted([]); setFinished(false); }}
+          style={{ marginTop: 16, padding: '12px 32px', fontSize: 16, borderRadius: 8, border: 'none', background: '#1a1a2e', color: 'white', cursor: 'pointer' }}>
+          再玩一次
+        </button>
+      </div>
+    );
+  }
 
-      {/* TODO: 加入目標單字的示範圖片 */}
-      <div style={{ marginBottom: 16 }}>
-        <p>請對著鏡頭做出「{targetWord}」的手語動作</p>
+  return (
+    <div style={{ padding: 24, maxWidth: 800, margin: '0 auto' }}>
+
+      {/* 進度條 */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+          <span style={{ fontWeight: 'bold' }}>進度：{completed.length} / 26</span>
+          <span style={{ color: '#888' }}>{((completed.length / 26) * 100).toFixed(0)}%</span>
+        </div>
+        <div style={{ background: '#eee', borderRadius: 8, height: 12 }}>
+          <div style={{
+            background: '#1a1a2e', borderRadius: 8, height: 12,
+            width: `${(completed.length / 26) * 100}%`,
+            transition: 'width 0.4s ease'
+          }} />
+        </div>
       </div>
 
-      <VideoCapture onResult={handleResult} />
+      {/* 字母格子 */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 20 }}>
+        {LETTERS.map((l, i) => (
+          <div key={l} style={{
+            width: 36, height: 36, borderRadius: 6,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontWeight: 'bold', fontSize: 14,
+            background: completed.includes(l) ? '#4CAF50' : i === currentIdx ? '#1a1a2e' : '#eee',
+            color: completed.includes(l) || i === currentIdx ? 'white' : '#666',
+            border: i === currentIdx ? '2px solid #1a1a2e' : '2px solid transparent',
+          }}>
+            {completed.includes(l) ? '✓' : l}
+          </div>
+        ))}
+      </div>
 
-      {/* 辨識結果回饋 */}
-      {result && (
-        <div style={{ marginTop: 16, padding: 12, background: isCorrect ? '#e8f5e9' : '#ffebee', borderRadius: 8 }}>
-          <p>辨識結果：<strong>{result.label}</strong></p>
-          <p>信心值：{(result.confidence * 100).toFixed(1)}%</p>
-          <p style={{ fontSize: 24 }}>{isCorrect ? '✅ 正確！' : '❌ 再試一次'}</p>
+      {/* 目標字母 */}
+      <div style={{ textAlign: 'center', marginBottom: 16 }}>
+        <div style={{
+          fontSize: 80, fontWeight: 'bold', color: '#1a1a2e',
+          lineHeight: 1, transition: 'all 0.3s'
+        }}>
+          {targetLetter}
+        </div>
+        <p style={{ color: '#888', marginTop: 4 }}>
+          請比出字母「{targetLetter}」的 ASL 手勢
+        </p>
+      </div>
+
+      {/* 成功動畫 */}
+      {showSuccess && (
+        <div style={{
+          position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+          background: 'rgba(76,175,80,0.95)', borderRadius: 20, padding: '30px 60px',
+          textAlign: 'center', zIndex: 999, color: 'white'
+        }}>
+          <div style={{ fontSize: 48 }}>✅</div>
+          <div style={{ fontSize: 32, fontWeight: 'bold' }}>{targetLetter} 正確！</div>
+          <div style={{ fontSize: 16, marginTop: 8 }}>
+            {currentIdx + 1 < LETTERS.length ? `下一個：${LETTERS[currentIdx + 1]}` : '完成！'}
+          </div>
         </div>
       )}
 
-      {/* TODO: 加入練習統計（累積次數、準確率趨勢圖） */}
+      <VideoCapture onResult={handleResult} />
+
+      {/* 即時辨識結果 */}
+      {result && !showSuccess && (
+        <div style={{
+          marginTop: 12, padding: 12, borderRadius: 8, textAlign: 'center',
+          background: isCorrect ? '#e8f5e9' : '#ffebee',
+          border: `1px solid ${isCorrect ? '#4CAF50' : '#ffcdd2'}`
+        }}>
+          辨識到：<strong style={{ fontSize: 20 }}>{result.label}</strong>
+          　信心值：{(result.confidence * 100).toFixed(0)}%
+          　{isCorrect ? '✅' : '❌'}
+        </div>
+      )}
     </div>
   );
 };

@@ -1,1 +1,6 @@
-ai-backend/dataset/ 
+ai-backend/models/*.pt
+ai-backend/models/*.onnx
+node_modules/
+__pycache__/
+.env
+ai-backend/dataset/

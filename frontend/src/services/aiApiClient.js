@@ -11,10 +11,7 @@ import axios from 'axios';
 
 const AI_API_URL = process.env.REACT_APP_AI_API_URL || 'http://localhost:8000';
 
-const apiClient = axios.create({
-  baseURL: AI_API_URL,
-  timeout: 5000, // 5 秒逾時
-});
+const apiClient = axios.create({ baseURL: AI_API_URL, timeout: 15000 });
 
 /**
  * 送出影格進行手語辨識
@@ -24,18 +21,9 @@ const apiClient = axios.create({
  * TODO: 依照 docs/api_spec.md 的介面定義實作
  */
 export const predictSign = async (base64Frame) => {
-  // TODO: 實作 POST /predict 請求
-  // Request body: { image: base64Frame }
-  // Response: { label, confidence, bbox }
-
-  // 暫時回傳假資料，等後端 API 完成後替換
-  console.warn('predictSign: 使用假資料，等待組員 A 完成後端 API');
-  return { label: '你好', confidence: 0.87, bbox: [100, 80, 300, 400] };
-
-  /*
   const response = await apiClient.post('/predict', { image: base64Frame });
+  console.log('後端回傳：', response.data);
   return response.data;
-  */
 };
 
 /**

@@ -8,6 +8,7 @@
     "@mediapipe/hands": "^0.4.1675469240",
     "axios": "^1.6.7",
     "firebase": "^10.9.0",
+    "onnxruntime-web": "^1.26.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.22.0",

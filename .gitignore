@@ -1,9 +1,43 @@
+# ───── Python / 後端 ─────
+__pycache__/
+*.pyc
+.env
+ai-backend/venv/
+ai-backend/yolov8m.pt
+
+# ───── 舊 YOLO 訓練產物 ─────
 ai-backend/models/*.pt
 ai-backend/models/*.onnx
-node_modules/
-__pycache__/
-.env
-ai-backend/dataset/
-ai-backend/yolov8m.pt
 ai-backend/runs/
+ai-backend/asl_recognition/
+
+# ───── 大型資料集（不進 git）─────
+ai-backend/dataset/
+
+# ───── Pose Recognition pipeline ─────
+# 大型訓練檔不上傳，但保留 ONNX（前端要用，< 100 KB）
+ai-backend/pose_recognition/data/landmarks_*.csv
+ai-backend/pose_recognition/data/failed_*.csv
+ai-backend/pose_recognition/models/*.pt
+ai-backend/pose_recognition/models/sign_mlp_v*.onnx
+ai-backend/pose_recognition/runs/history*.json
+ai-backend/pose_recognition/runs/confusion_matrix*.csv
+# 保留：classification_report*.txt, comparison_report.md, comparison_curves.png（小檔且有對比價值）
+
+# ───── 前端 ─────
+node_modules/
+frontend/build/
+frontend/.env.local
+
+# ───── 系統檔 ─────
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+
+# ───── 重複的 nested 目錄（之前 clone 不小心建的）─────
 tsl-learning-platform/
+
+# ───── IDE ─────
+.vscode/
+.idea/

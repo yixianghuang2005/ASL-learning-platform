@@ -8,6 +8,7 @@ import Home from './pages/Home';
 import Practice from './pages/Practice';
 import Vocabulary from './pages/Vocabulary';
 import Profile from './pages/Profile';
+import TestPose from './pages/TestPose';
 
 // TODO: 組員 C 完成 firebaseClient.js 後，取消註解以下兩行
 // import { onAuthChanged, signOut } from './services/firebaseClient';
@@ -27,6 +28,7 @@ function App() {
         <Route path="/practice"   element={<Practice />} />
         <Route path="/vocabulary" element={<Vocabulary />} />
         <Route path="/profile"    element={<Profile />} />
+        <Route path="/test-pose"  element={<TestPose />} />
         <Route path="*"           element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

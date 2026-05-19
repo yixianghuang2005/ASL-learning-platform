@@ -1,6 +1,9 @@
-// 📹 PoseVideoCapture.jsx — 純前端 Pose Estimation 推論（不需要後端）
+// PoseVideoCapture.jsx — 純前端 Pose Estimation 推論（不需要後端）
 //
-// 流程：攝影機 → MediaPipe Hands 抽 21 個關節點 → 正規化 → ONNX MLP 分類器 → 字母
+// 流程：
+//   攝影機 → MediaPipe Hands 抽 21 個關節點
+//     ├─ 給 JZMotionDetector 看（軌跡式偵測 J、Z 兩個動態字母）
+//     └─ 沒命中時 → 正規化 → ONNX MLP 分類器（靜態字母 A-Y 扣 J）
 //
 // 依賴：
 //   npm install @mediapipe/hands @mediapipe/camera_utils onnxruntime-web
@@ -9,9 +12,14 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Hands } from '@mediapipe/hands';
 import { Camera } from '@mediapipe/camera_utils';
 import * as ort from 'onnxruntime-web';
+import JZMotionDetector from '../utils/jzMotionDetector';
 
 const MODEL_URL = '/models/sign_mlp.onnx';
 const CLASSES_URL = '/models/classes.json';
+
+// J/Z 偵測到後在畫面上停留的時間（毫秒）。這段時間內 MLP 的結果會被忽略，
+// 避免動作結束的瞬間 MLP 又跳回某個靜態字母蓋掉 J/Z。
+const JZ_HOLD_MS = 1200;
 
 // 與後端 normalize_landmarks 完全對應的正規化（手腕原點 + 中指掌骨尺度）
 function normalizeLandmarks(landmarks) {
@@ -48,25 +56,24 @@ export default function PoseVideoCapture({ onResult }) {
   const sessionRef     = useRef(null);
   const classesRef     = useRef([]);
   const mountedRef     = useRef(true);
-  const onResultRef    = useRef(onResult);   // ★ 用 ref 包住 callback，避免父元件 re-render 觸發 MediaPipe 重建
-  const lastLabelRef   = useRef(null);       // ★ 節流：只在預測「真的變了」時才更新 state
+  const onResultRef    = useRef(onResult);
+  const lastLabelRef   = useRef(null);
   const lastConfRef    = useRef(0);
-  const frameCountRef  = useRef(0);          // ★ 跳幀計數器
+  const frameCountRef  = useRef(0);
+  const jzDetectorRef  = useRef(null);
+  const jzHoldUntilRef = useRef(0);
 
   const [ready, setReady]           = useState(false);
   const [prediction, setPrediction] = useState(null);
   const [error, setError]           = useState(null);
 
-  // 每次 prop 變動，更新 ref 內的最新 callback（不影響 effect）
   useEffect(() => { onResultRef.current = onResult; });
 
-  // 元件掛載狀態
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
 
-  // 載入 ONNX 模型 + 類別清單（只跑一次）
   useEffect(() => {
     (async () => {
       try {
@@ -85,18 +92,17 @@ export default function PoseVideoCapture({ onResult }) {
     })();
   }, []);
 
-  // 初始化 MediaPipe Hands + Camera（只依賴 ready，不依賴 onResult）
   useEffect(() => {
     if (!ready) return;
-
     const video = videoRef.current;
     if (!video) return;
 
-    // ───── MediaPipe 結果處理 ─────
+    jzDetectorRef.current = new JZMotionDetector({ mirrored: true });
+    jzHoldUntilRef.current = 0;
+
     const handleHandsResult = (results) => {
       if (!mountedRef.current) return;
 
-      // 繪製偵測到的手到 canvas
       const ctx = canvasRef.current?.getContext('2d');
       if (ctx && results.image) {
         try {
@@ -115,8 +121,11 @@ export default function PoseVideoCapture({ onResult }) {
         } catch (_) {}
       }
 
-      // ★ 沒手 = nothing。只在「上一幀不是 nothing」時才通知，省掉每幀重繪
+      const now = performance.now();
+
       if (!results.multiHandLandmarks?.length) {
+        jzDetectorRef.current?.pushFrame(null, now);
+        if (now < jzHoldUntilRef.current) return;
         if (lastLabelRef.current !== 'nothing') {
           lastLabelRef.current = 'nothing';
           lastConfRef.current = 0;
@@ -126,12 +135,30 @@ export default function PoseVideoCapture({ onResult }) {
         return;
       }
 
-      // ★ 跳幀：MLP 推論很便宜（~36K FLOPs），但 React 重繪很貴。
-      //    每 2 幀才跑一次 ONNX，把推論率降到 ~15 fps，畫面照樣 30 fps
+      const landmarks = results.multiHandLandmarks[0];
+
+      // 1) J/Z 偵測器（每幀都餵）
+      const jzResult = jzDetectorRef.current?.pushFrame(landmarks, now);
+      if (jzResult && jzResult.label) {
+        jzHoldUntilRef.current = now + JZ_HOLD_MS;
+        lastLabelRef.current = jzResult.label;
+        lastConfRef.current = jzResult.confidence;
+        setPrediction({ label: jzResult.label, confidence: jzResult.confidence });
+        onResultRef.current?.({
+          label: jzResult.label,
+          confidence: jzResult.confidence,
+          source: 'jz-motion',
+        });
+        return;
+      }
+
+      if (now < jzHoldUntilRef.current) return;
+
+      // 2) MLP（負責靜態字母）— 每 2 幀跑一次
       frameCountRef.current = (frameCountRef.current + 1) % 2;
       if (frameCountRef.current !== 0) return;
 
-      const features = normalizeLandmarks(results.multiHandLandmarks[0]);
+      const features = normalizeLandmarks(landmarks);
       if (!features || !sessionRef.current) return;
 
       (async () => {
@@ -139,20 +166,19 @@ export default function PoseVideoCapture({ onResult }) {
           const tensor = new ort.Tensor('float32', features, [1, 63]);
           const output = await sessionRef.current.run({ landmarks: tensor });
           if (!mountedRef.current) return;
+          if (performance.now() < jzHoldUntilRef.current) return;
           const logits = Array.from(output.logits.data);
           const probs = softmax(logits);
           const maxIdx = probs.indexOf(Math.max(...probs));
           const label = classesRef.current[maxIdx];
           const confidence = probs[maxIdx];
-
-          // ★ 節流：只在「字母變了」或「信心變動 > 5%」時才更新 state
           const labelChanged = label !== lastLabelRef.current;
           const confChanged  = Math.abs(confidence - lastConfRef.current) > 0.05;
           if (labelChanged || confChanged) {
             lastLabelRef.current = label;
             lastConfRef.current  = confidence;
             setPrediction({ label, confidence });
-            onResultRef.current?.({ label, confidence, probs });
+            onResultRef.current?.({ label, confidence, probs, source: 'mlp' });
           }
         } catch (e) {
           if (mountedRef.current) console.warn('ONNX 推論失敗：', e);
@@ -160,7 +186,6 @@ export default function PoseVideoCapture({ onResult }) {
       })();
     };
 
-    // ───── 建立 MediaPipe Hands ─────
     const hands = new Hands({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
     });
@@ -198,11 +223,10 @@ export default function PoseVideoCapture({ onResult }) {
       handsRef.current = null;
       cameraRef.current = null;
     };
-  }, [ready]);   // ★ 只依賴 ready，不會被父元件 re-render 觸發重建
+  }, [ready]);
 
   return (
     <div style={{ position: 'relative', width: 640, height: 480 }}>
-      {/* 不用 display:none，改成放在畫面外（保留 width/height）*/}
       <video
         ref={videoRef}
         playsInline
@@ -228,9 +252,9 @@ export default function PoseVideoCapture({ onResult }) {
         position: 'absolute', top: 12, left: 12, padding: '6px 12px',
         background: 'rgba(0,0,0,0.6)', color: '#fff', borderRadius: 6, fontSize: 18,
       }}>
-        {error ? `⚠️ ${error}`
+        {error ? '⚠️ ' + error
          : !ready ? '模型載入中…'
-         : prediction ? `${prediction.label}  (${(prediction.confidence * 100).toFixed(1)}%)`
+         : prediction ? prediction.label + '  (' + (prediction.confidence * 100).toFixed(1) + '%)'
          : '請將手放入畫面'}
       </div>
     </div>

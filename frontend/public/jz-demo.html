@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>JZ 動作辨識測試 — TSL Learning Platform</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC",
+                 "Microsoft JhengHei", sans-serif;
+    background: #0f1115; color: #e5e7eb;
+  }
+  h1 { margin: 0 0 8px; font-size: 22px; }
+  .sub { color: #9ca3af; font-size: 14px; margin-bottom: 20px; }
+  .wrap {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 20px;
+    max-width: 1100px; margin: 0 auto;
+  }
+  .video-card {
+    position: relative;
+    background: #1f2329; border-radius: 12px; overflow: hidden;
+    aspect-ratio: 4 / 3;
+  }
+  #cam { display: none; }
+  #canvas { width: 100%; height: 100%; display: block; }
+  .badge {
+    position: absolute; top: 10px; left: 10px;
+    padding: 6px 10px; background: rgba(0,0,0,0.6);
+    border-radius: 6px; font-size: 14px;
+  }
+  .big-label {
+    position: absolute; bottom: 10px; left: 10px;
+    padding: 8px 14px; background: rgba(0,0,0,0.65);
+    border-radius: 8px; font-size: 28px; font-weight: 600;
+  }
+  .panel { background: #1f2329; border-radius: 12px; padding: 16px; }
+  .panel h2 { margin: 0 0 12px; font-size: 16px; color: #d1d5db; }
+  .row { display: flex; justify-content: space-between; font-size: 13px; margin: 4px 0; }
+  .row .k { color: #9ca3af; }
+  .row .v { color: #e5e7eb; font-variant-numeric: tabular-nums; }
+  .row .v.hi { color: #34d399; font-weight: 600; }
+  .row .v.lo { color: #f87171; }
+  .log {
+    margin-top: 14px; background: #11141a; border-radius: 8px;
+    padding: 10px; min-height: 100px; max-height: 200px; overflow-y: auto;
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+  }
+  .log .l { color: #9ca3af; }
+  .log .j { color: #fbbf24; }
+  .log .z { color: #34d399; }
+  .controls { margin-top: 14px; }
+  .controls label {
+    display: block; font-size: 12px; color: #9ca3af; margin-top: 6px;
+  }
+  .controls input[type=range] { width: 100%; }
+  .hint {
+    font-size: 12px; color: #9ca3af; margin-top: 14px; line-height: 1.6;
+  }
+  .hint b { color: #d1d5db; }
+  button {
+    background: #2563eb; color: white; border: none;
+    padding: 6px 12px; border-radius: 6px; cursor: pointer;
+    font-size: 13px;
+  }
+  button:hover { background: #1d4ed8; }
+  button.ghost { background: #374151; }
+  button.ghost:hover { background: #4b5563; }
+  hr { border: none; border-top: 1px solid #2d3748; margin: 12px 0; }
+  .finger-bar {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; margin: 3px 0;
+  }
+  .finger-bar .lbl { width: 50px; color: #9ca3af; }
+  .finger-bar .bar {
+    flex: 1; height: 10px; background: #374151; border-radius: 5px; overflow: hidden;
+  }
+  .finger-bar .bar-fill {
+    height: 100%; background: #3b82f6; transition: width 0.1s;
+  }
+  .finger-bar .val { width: 36px; text-align: right; font-variant-numeric: tabular-nums; color: #d1d5db; }
+</style>
+</head>
+<body>
+<h1>JZ 動作辨識測試</h1>
+<p class="sub">
+  獨立的 J/Z 軌跡偵測 demo — 把手放進畫面、做 J 或 Z 的動作。
+  右側面板會即時顯示「為什麼有沒有偵測到」。
+</p>
+
+<div class="wrap">
+  <div class="video-card">
+    <video id="cam" playsinline muted autoplay></video>
+    <canvas id="canvas" width="640" height="480"></canvas>
+    <div class="badge" id="status">啟動相機中…</div>
+    <div class="big-label" id="bigLabel">—</div>
+  </div>
+
+  <div>
+    <div class="panel">
+      <h2>偵測狀態</h2>
+      <div class="row"><span class="k">手型</span><span class="v" id="handShape">—</span></div>
+      <div class="row"><span class="k">緩衝幀數 / 時長</span><span class="v" id="bufStat">0 / 0ms</span></div>
+      <div class="row"><span class="k">J 分數</span><span class="v" id="jScore">0.00</span></div>
+      <div class="row"><span class="k">Z 分數</span><span class="v" id="zScore">0.00</span></div>
+
+      <hr>
+      <h2 style="margin: 0 0 8px; font-size: 14px;">5 指相對長度（到手腕）</h2>
+      <div id="fingerBars"></div>
+
+      <hr>
+      <div class="controls">
+        <label>判定門檻 <span id="thLabel">0.55</span></label>
+        <input type="range" id="thSlider" min="0.30" max="0.90" step="0.01" value="0.55">
+
+        <label>最少動作量 <span id="motLabel">0.12</span></label>
+        <input type="range" id="motSlider" min="0.05" max="0.40" step="0.01" value="0.12">
+
+        <div style="margin-top: 10px; display: flex; gap: 8px;">
+          <button id="resetBtn" class="ghost">清空緩衝</button>
+          <button id="mirrorBtn" class="ghost">鏡像: ON</button>
+        </div>
+      </div>
+
+      <div class="log" id="log"></div>
+    </div>
+
+    <p class="hint">
+      <b>J：</b>豎起小指（其他收回），先往下、再往側鉤。<br>
+      <b>Z：</b>豎起食指，在空中畫一個 Z（兩段水平、中間斜線）。<br>
+      <b>診斷小撇步：</b>右側「5 指相對長度」如果食指/小指不是最長，手型就辨識不到。
+      面板上「J 分數」「Z 分數」會即時更新；分數 ≥ 0.55 就會觸發。
+    </p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+
+<script type="module">
+// 直接 import 來自 src 的偵測器（複製在 public/jzMotionDetector.js）。
+// 這樣不用維護兩份重複的程式碼。
+import { JZMotionDetector, _internals } from './jzMotionDetector.js';
+
+const $ = id => document.getElementById(id);
+const video = $('cam');
+const canvas = $('canvas');
+const ctx = canvas.getContext('2d');
+const det = new JZMotionDetector({ debug: true, mirrored: true });
+let mirror = true;
+
+function log(msg, cls = 'l') {
+  const el = $('log');
+  const line = document.createElement('div');
+  line.className = cls;
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+  while (el.childNodes.length > 50) el.removeChild(el.firstChild);
+}
+
+$('thSlider').addEventListener('input', e => {
+  det.confidenceThresh = parseFloat(e.target.value);
+  $('thLabel').textContent = det.confidenceThresh.toFixed(2);
+});
+$('motSlider').addEventListener('input', e => {
+  det.minMotion = parseFloat(e.target.value);
+  $('motLabel').textContent = det.minMotion.toFixed(2);
+});
+$('resetBtn').addEventListener('click', () => { det.reset(); log('已清空緩衝'); });
+$('mirrorBtn').addEventListener('click', () => {
+  mirror = !mirror;
+  $('mirrorBtn').textContent = '鏡像: ' + (mirror ? 'ON' : 'OFF');
+});
+
+// 5 指相對長度顯示
+const FINGER_NAMES = ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky'];
+const FINGER_TIPS = [4, 8, 12, 16, 20];
+const fingerBarsEl = $('fingerBars');
+for (let i = 0; i < 5; i++) {
+  const div = document.createElement('div');
+  div.className = 'finger-bar';
+  div.innerHTML = `<span class="lbl">${FINGER_NAMES[i]}</span>
+    <div class="bar"><div class="bar-fill" id="fb${i}" style="width:0%"></div></div>
+    <span class="val" id="fv${i}">-</span>`;
+  fingerBarsEl.appendChild(div);
+}
+
+function updateFingerBars(L) {
+  if (!L) {
+    for (let i = 0; i < 5; i++) {
+      $('fb' + i).style.width = '0%';
+      $('fv' + i).textContent = '-';
+    }
+    return;
+  }
+  const wrist = L[0];
+  const dists = FINGER_TIPS.map(idx => Math.hypot(L[idx].x - wrist.x, L[idx].y - wrist.y));
+  const maxD = Math.max(...dists);
+  const maxI = dists.indexOf(maxD);
+  for (let i = 0; i < 5; i++) {
+    const ratio = dists[i] / maxD;
+    const fb = $('fb' + i);
+    fb.style.width = (ratio * 100).toFixed(0) + '%';
+    fb.style.background = i === maxI ? '#34d399' : '#3b82f6';
+    $('fv' + i).textContent = (dists[i] / dists[0] || 0).toFixed(2);
+  }
+}
+
+let bigLabelClearAt = 0;
+
+function onHands(results) {
+  const now = performance.now();
+
+  ctx.save();
+  if (mirror) { ctx.scale(-1, 1); ctx.translate(-canvas.width, 0); }
+  ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+  ctx.restore();
+
+  let handShape = '—';
+  let bufStat = '0 / 0ms';
+  let jScore = 0, zScore = 0;
+
+  if (results.multiHandLandmarks?.length) {
+    const L = results.multiHandLandmarks[0];
+
+    ctx.fillStyle = '#00ff88';
+    for (const lm of L) {
+      const x = mirror ? (1 - lm.x) * canvas.width : lm.x * canvas.width;
+      const y = lm.y * canvas.height;
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, 2 * Math.PI); ctx.fill();
+    }
+
+    updateFingerBars(L);
+
+    const r = det.pushFrame(L, now);
+    if (r) {
+      const d = r.debug || {};
+      handShape = d.handShape || '—';
+      bufStat = `${d.bufLen ?? '-'} / ${d.windowMs?.toFixed(0) ?? 0}ms`;
+      jScore = d.jScore ?? 0;
+      zScore = d.zScore ?? 0;
+      if (r.label) {
+        log(`偵測到 ${r.label}  (信心 ${(r.confidence * 100).toFixed(0)}%)`,
+            r.label === 'J' ? 'j' : 'z');
+        $('bigLabel').textContent = r.label;
+        $('bigLabel').style.color = r.label === 'J' ? '#fbbf24' : '#34d399';
+        bigLabelClearAt = now + 1500;
+      }
+    }
+
+    const tr = det.getTrajectory();
+    if (tr.points.length >= 2) {
+      ctx.strokeStyle = tr.tip === 'pinky' ? '#fbbf24' : '#34d399';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let i = 0; i < tr.points.length; i++) {
+        const p = tr.points[i];
+        const x = mirror ? (1 - p.x) * canvas.width : p.x * canvas.width;
+        const y = p.y * canvas.height;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  } else {
+    det.pushFrame(null, now);
+    updateFingerBars(null);
+  }
+
+  const handShapeEl = $('handShape');
+  handShapeEl.textContent = handShape;
+  handShapeEl.className = 'v ' + (handShape && handShape !== '—' ? 'hi' : 'lo');
+  $('bufStat').textContent = bufStat;
+  $('jScore').textContent = jScore.toFixed(2);
+  $('zScore').textContent = zScore.toFixed(2);
+  $('jScore').className = 'v ' + (jScore >= 0.55 ? 'hi' : '');
+  $('zScore').className = 'v ' + (zScore >= 0.55 ? 'hi' : '');
+
+  if (now > bigLabelClearAt) {
+    $('bigLabel').textContent = '—';
+    $('bigLabel').style.color = '#9ca3af';
+  }
+}
+
+const hands = new Hands({
+  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`,
+});
+hands.setOptions({
+  maxNumHands: 1,
+  modelComplexity: 1,
+  minDetectionConfidence: 0.5,
+  minTrackingConfidence: 0.5,
+});
+hands.onResults(onHands);
+
+const cam = new Camera(video, {
+  onFrame: async () => { await hands.send({ image: video }); },
+  width: 640, height: 480,
+});
+cam.start();
+$('status').textContent = '相機就緒，請做出 J 或 Z 的動作';
+log('啟動完成');
+</script>
+</body>
+</html>

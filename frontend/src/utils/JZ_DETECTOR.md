@@ -1,6 +1,6 @@
 # JZ Motion Detector — ASL 動態字母 J、Z 偵測
 
-> 為 TSL Learning Platform 補上 ASL 字母表中唯二需要動作軌跡的字母：**J** 和 **Z**。
+> 為 ASL Learning Platform 補上 ASL 字母表中唯二需要動作軌跡的字母：**J** 和 **Z**。
 
 ## 為什麼需要這個
 

@@ -41,3 +41,21 @@ tsl-learning-platform/
 # ───── IDE ─────
 .vscode/
 .idea/
+
+# ───── Claude Code 內部檔案 ─────
+.claude/
+.codex_tmp/
+
+# ───── 非專案相關文件 ─────
+doc_images/
+document-work/
+pdf-work/
+rendered_formatted/
+creative_breakthrough_original.docx
+format_creative_breakthrough.py
+formatted_check.docx
+
+# ───── 訓練資料（大型，不進 git）─────
+ai-backend/pose_recognition/data/
+ai-backend/pose_recognition/runs/*.json
+ai-backend/pose_recognition/runs/*.csv

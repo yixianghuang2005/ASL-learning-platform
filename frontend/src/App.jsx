@@ -7,6 +7,7 @@ import Navbar from './components/Navbar';
 import Home from './pages/Home';
 import Practice from './pages/Practice';
 import Vocabulary from './pages/Vocabulary';
+import WordRecognition from './pages/WordRecognition';
 import Profile from './pages/Profile';
 import TestPose from './pages/TestPose';
 
@@ -27,6 +28,7 @@ function App() {
         <Route path="/"           element={<Home />} />
         <Route path="/practice"   element={<Practice />} />
         <Route path="/vocabulary" element={<Vocabulary />} />
+        <Route path="/asl-words"  element={<WordRecognition />} />
         <Route path="/profile"    element={<Profile />} />
         <Route path="/test-pose"  element={<TestPose />} />
         <Route path="*"           element={<Navigate to="/" replace />} />

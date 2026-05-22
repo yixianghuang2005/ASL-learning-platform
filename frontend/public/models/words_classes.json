@@ -1,0 +1,16 @@
+{
+  "classes": [
+    "hello",
+    "thankyou",
+    "please",
+    "sorry",
+    "help",
+    "yes",
+    "no",
+    "want1",
+    "like",
+    "more"
+  ],
+  "seq_len": 30,
+  "input_dim": 225
+}

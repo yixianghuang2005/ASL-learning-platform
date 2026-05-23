@@ -6,6 +6,7 @@
     "@mediapipe/camera_utils": "^0.3.1675466862",
     "@mediapipe/drawing_utils": "^0.3.1675466124",
     "@mediapipe/hands": "^0.4.1675469240",
+    "@mediapipe/holistic": "^0.5.1675471629",
     "axios": "^1.6.7",
     "firebase": "^10.9.0",
     "onnxruntime-web": "^1.26.0",

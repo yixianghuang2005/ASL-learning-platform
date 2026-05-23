@@ -1,340 +1,308 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Hands } from '@mediapipe/hands';
-import { Camera } from '@mediapipe/camera_utils';
-import * as ort from 'onnxruntime-web';
+// WordVideoCapture.jsx — 詞彙辨識鏡頭元件（MediaPipe Holistic 版）
+//
+// Props:
+//   isRecording   {bool}    父層控制是否開始錄製
+//   onConfirmed   {fn}      連續 confirmCount 次同結果且信心夠高時觸發
+//   onFrame       {fn}      每次有推論結果時觸發
+//   confirmCount  {number}  預設 3
+//   confirmThresh {number}  預設 0.70
+//
+// 特徵維度：225 = pose(33×3) + leftHand(21×3) + rightHand(21×3)
+// 與後端 extract_wlasl_sequences.py 正規化方式一致
 
-const MODEL_URL = '/models/asl_words_sequence.onnx';
-const CLASSES_URL = '/models/asl_words_classes.json';
-const DEFAULT_SEQUENCE_LENGTH = 30;
-const DEFAULT_INPUT_DIM = 136;
-const PREDICT_EVERY_MS = 350;
+import React, { useRef, useEffect, useState } from 'react';
+import { Holistic } from '@mediapipe/holistic';
+import { Camera }   from '@mediapipe/camera_utils';
+import * as ort     from 'onnxruntime-web';
 
-function softmax(values) {
-  const max = Math.max(...values);
-  const exps = values.map((value) => Math.exp(value - max));
-  const sum = exps.reduce((acc, value) => acc + value, 0);
-  return exps.map((value) => value / sum);
-}
+const MODEL_URL   = '/models/asl_words_sequence.onnx';
+const CLASSES_URL = '/models/words_classes.json';
+const SEQ_LEN     = 30;
+const INPUT_DIM   = 225;   // 99 + 63 + 63
+const INFER_EVERY = 5;
 
-function normalizeHand(landmarks) {
-  if (!landmarks || landmarks.length < 21) return new Array(68).fill(0);
+// ── 特徵提取（與後端 normalize_pose / normalize_hand 對應）──────────────────
 
-  const wrist = landmarks[0];
-  const ref = landmarks[9];
-  const dx = ref.x - wrist.x;
-  const dy = ref.y - wrist.y;
-  const dz = (ref.z || 0) - (wrist.z || 0);
-  const scale = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
-  const out = [1, wrist.x, wrist.y, wrist.z || 0, scale];
-
-  landmarks.forEach((point) => {
-    out.push((point.x - wrist.x) / scale);
-    out.push((point.y - wrist.y) / scale);
-    out.push(((point.z || 0) - (wrist.z || 0)) / scale);
+function normalizePose(landmarks) {
+  if (!landmarks || landmarks.length < 13) return new Float32Array(99);
+  const cx = (landmarks[11].x + landmarks[12].x) / 2;
+  const cy = (landmarks[11].y + landmarks[12].y) / 2;
+  const cz = (landmarks[11].z + landmarks[12].z) / 2;
+  const scale = Math.sqrt(
+    (landmarks[11].x - landmarks[12].x) ** 2 +
+    (landmarks[11].y - landmarks[12].y) ** 2 +
+    (landmarks[11].z - landmarks[12].z) ** 2,
+  );
+  if (scale < 1e-6) return new Float32Array(99);
+  const out = new Float32Array(99);
+  landmarks.forEach((lm, i) => {
+    out[i * 3]     = (lm.x - cx) / scale;
+    out[i * 3 + 1] = (lm.y - cy) / scale;
+    out[i * 3 + 2] = (lm.z - cz) / scale;
   });
-
   return out;
 }
 
-function makeFrameFeatures(handLandmarks, handedness) {
-  const hands = { Left: null, Right: null };
-
-  handLandmarks.forEach((landmarks, index) => {
-    const label = handedness?.[index]?.label || handedness?.[index]?.classification?.[0]?.label;
-    if (label === 'Left' || label === 'Right') {
-      hands[label] = landmarks;
-      return;
-    }
-    if (!hands.Right) hands.Right = landmarks;
-    else if (!hands.Left) hands.Left = landmarks;
+function normalizeHand(landmarks) {
+  if (!landmarks || landmarks.length < 21) return new Float32Array(63);
+  const wrist = landmarks[0];
+  const ref   = landmarks[9];
+  const scale = Math.sqrt(
+    (ref.x - wrist.x) ** 2 + (ref.y - wrist.y) ** 2 + (ref.z - wrist.z) ** 2,
+  );
+  if (scale < 1e-6) return new Float32Array(63);
+  const out = new Float32Array(63);
+  landmarks.forEach((lm, i) => {
+    out[i * 3]     = (lm.x - wrist.x) / scale;
+    out[i * 3 + 1] = (lm.y - wrist.y) / scale;
+    out[i * 3 + 2] = (lm.z - wrist.z) / scale;
   });
-
-  return [...normalizeHand(hands.Left), ...normalizeHand(hands.Right)];
+  return out;
 }
 
-function flattenSequence(frames, sequenceLength, inputDim) {
-  const data = new Float32Array(sequenceLength * inputDim);
-  frames.slice(-sequenceLength).forEach((frame, frameIndex) => {
-    for (let i = 0; i < inputDim; i += 1) {
-      data[frameIndex * inputDim + i] = frame[i] || 0;
-    }
-  });
-  return data;
+function frameFeatures(results) {
+  const pose  = normalizePose(results.poseLandmarks);
+  const left  = normalizeHand(results.leftHandLandmarks);
+  const right = normalizeHand(results.rightHandLandmarks);
+  const feat  = new Float32Array(INPUT_DIM);
+  feat.set(pose,  0);
+  feat.set(left,  99);
+  feat.set(right, 162);
+  return feat;
 }
 
-export default function WordVideoCapture({ onResult }) {
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const cameraRef = useRef(null);
-  const handsRef = useRef(null);
-  const sessionRef = useRef(null);
-  const classesRef = useRef([]);
-  const sequenceRef = useRef([]);
-  const onResultRef = useRef(onResult);
-  const mountedRef = useRef(true);
-  const lastPredictAtRef = useRef(0);
+function softmax(arr) {
+  const max  = Math.max(...arr);
+  const exps = arr.map(v => Math.exp(v - max));
+  const sum  = exps.reduce((a, b) => a + b, 0);
+  return exps.map(v => v / sum);
+}
 
-  const [ready, setReady] = useState(false);
-  const [modelReady, setModelReady] = useState(false);
-  const [modelMessage, setModelMessage] = useState('loading');
-  const [sequenceLength, setSequenceLength] = useState(DEFAULT_SEQUENCE_LENGTH);
-  const [inputDim, setInputDim] = useState(DEFAULT_INPUT_DIM);
-  const [prediction, setPrediction] = useState(null);
+// ── 元件 ──────────────────────────────────────────────────────────────────
+
+export default function WordVideoCapture({
+  isRecording   = false,
+  onConfirmed   = null,
+  onFrame       = null,
+  confirmCount  = 3,
+  confirmThresh = 0.70,
+}) {
+  const videoRef       = useRef(null);
+  const canvasRef      = useRef(null);
+  const sessionRef     = useRef(null);
+  const classesRef     = useRef([]);
+  const bufferRef      = useRef([]);
+  const frameCountRef  = useRef(0);
+  const streakRef      = useRef({ label: null, count: 0 });
+  const confirmedRef   = useRef(false);
+  const mountedRef     = useRef(true);
+  const onConfirmedRef = useRef(onConfirmed);
+  const onFrameRef     = useRef(onFrame);
+
+  const [ready, setReady]   = useState(false);
+  const [error, setError]   = useState(null);
+  const [bufLen, setBufLen] = useState(0);
+  const [live, setLive]     = useState(null);
+
+  useEffect(() => { onConfirmedRef.current = onConfirmed; });
+  useEffect(() => { onFrameRef.current = onFrame; });
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
   useEffect(() => {
-    onResultRef.current = onResult;
-  });
+    bufferRef.current    = [];
+    frameCountRef.current = 0;
+    streakRef.current    = { label: null, count: 0 };
+    confirmedRef.current = false;
+    setBufLen(0);
+    setLive(null);
+  }, [isRecording]);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
+  // 載入 ONNX 模型
   useEffect(() => {
     (async () => {
       try {
-        const [session, classMeta] = await Promise.all([
+        const [session, classesRes] = await Promise.all([
           ort.InferenceSession.create(MODEL_URL, { executionProviders: ['wasm'] }),
-          fetch(CLASSES_URL).then((response) => {
-            if (!response.ok) throw new Error('classes-not-found');
-            return response.json();
-          }),
+          fetch(CLASSES_URL).then(r => r.json()),
         ]);
-
         if (!mountedRef.current) return;
         sessionRef.current = session;
-        classesRef.current = classMeta.classes || [];
-        setSequenceLength(classMeta.sequence_length || DEFAULT_SEQUENCE_LENGTH);
-        setInputDim(classMeta.input_dim || DEFAULT_INPUT_DIM);
-        setModelReady(true);
-        setModelMessage('ready');
-      } catch (error) {
-        if (!mountedRef.current) return;
-        setModelReady(false);
-        setModelMessage('missing');
-        onResultRef.current?.({ label: 'model-not-ready', confidence: 0 });
-      } finally {
-        if (mountedRef.current) setReady(true);
+        classesRef.current = classesRes.classes;
+        setReady(true);
+      } catch (e) {
+        if (mountedRef.current) setError(`模型載入失敗: ${e.message}`);
       }
     })();
   }, []);
 
+  // MediaPipe Holistic + Camera
   useEffect(() => {
-    if (!ready) return undefined;
+    if (!ready) return;
     const video = videoRef.current;
-    if (!video) return undefined;
-
-    const drawFrame = (results) => {
-      const canvas = canvasRef.current;
-      const ctx = canvas?.getContext('2d');
-      if (!ctx || !results.image) return;
-
-      ctx.save();
-      ctx.clearRect(0, 0, 640, 480);
-      ctx.drawImage(results.image, 0, 0, 640, 480);
-      ctx.fillStyle = '#38bdf8';
-      ctx.strokeStyle = 'rgba(56,189,248,0.55)';
-      ctx.lineWidth = 2;
-
-      results.multiHandLandmarks?.forEach((landmarks) => {
-        landmarks.forEach((point) => {
-          ctx.beginPath();
-          ctx.arc(point.x * 640, point.y * 480, 3.5, 0, 2 * Math.PI);
-          ctx.fill();
-        });
-      });
-      ctx.restore();
-    };
-
-    const runPrediction = async () => {
-      if (!sessionRef.current || sequenceRef.current.length < sequenceLength) return;
-
-      const now = performance.now();
-      if (now - lastPredictAtRef.current < PREDICT_EVERY_MS) return;
-      lastPredictAtRef.current = now;
-
-      const input = flattenSequence(sequenceRef.current, sequenceLength, inputDim);
-      const tensor = new ort.Tensor('float32', input, [1, sequenceLength, inputDim]);
-      const inputName = sessionRef.current.inputNames?.[0] || 'sequence';
-
-      try {
-        const output = await sessionRef.current.run({ [inputName]: tensor });
-        if (!mountedRef.current) return;
-        const outputName = sessionRef.current.outputNames?.[0] || 'logits';
-        const logits = Array.from(output[outputName].data);
-        const probs = softmax(logits);
-        const maxIdx = probs.indexOf(Math.max(...probs));
-        const label = classesRef.current[maxIdx] || `class-${maxIdx}`;
-        const confidence = probs[maxIdx] || 0;
-        const next = { label, confidence, probs, source: 'asl-word-sequence' };
-        setPrediction(next);
-        onResultRef.current?.(next);
-      } catch (error) {
-        console.warn('ASL word inference failed:', error);
-      }
-    };
+    if (!video) return;
 
     const handleResults = (results) => {
       if (!mountedRef.current) return;
-      drawFrame(results);
 
-      if (!results.multiHandLandmarks?.length) {
-        sequenceRef.current = [];
-        setPrediction({ label: 'no-hand', confidence: 0 });
-        onResultRef.current?.({ label: 'no-hand', confidence: 0 });
+      // 畫布：畫攝影機畫面 + pose skeleton
+      const ctx = canvasRef.current?.getContext('2d');
+      if (ctx && results.image) {
+        try {
+          ctx.save();
+          ctx.clearRect(0, 0, 640, 480);
+          ctx.drawImage(results.image, 0, 0, 640, 480);
+
+          // 畫手部關節點
+          const drawDots = (lms, color) => {
+            if (!lms) return;
+            ctx.fillStyle = color;
+            lms.forEach(lm => {
+              ctx.beginPath();
+              ctx.arc(lm.x * 640, lm.y * 480, 4, 0, 2 * Math.PI);
+              ctx.fill();
+            });
+          };
+          drawDots(results.leftHandLandmarks,  '#00ff88');
+          drawDots(results.rightHandLandmarks, '#ff8800');
+
+          // 畫上半身 pose 關節點（只畫手腕以上）
+          if (results.poseLandmarks) {
+            ctx.fillStyle = '#60a5fa';
+            [11,12,13,14,15,16].forEach(i => {
+              const lm = results.poseLandmarks[i];
+              ctx.beginPath();
+              ctx.arc(lm.x * 640, lm.y * 480, 5, 0, 2 * Math.PI);
+              ctx.fill();
+            });
+          }
+          ctx.restore();
+        } catch (_) {}
+      }
+
+      if (!isRecording || confirmedRef.current) return;
+
+      const hasHand = results.leftHandLandmarks || results.rightHandLandmarks;
+      if (!hasHand) {
+        bufferRef.current = [];
+        setBufLen(0);
+        streakRef.current = { label: null, count: 0 };
         return;
       }
 
-      const frame = makeFrameFeatures(results.multiHandLandmarks, results.multiHandedness);
-      sequenceRef.current = [...sequenceRef.current, frame].slice(-sequenceLength);
+      bufferRef.current.push(frameFeatures(results));
+      if (bufferRef.current.length > SEQ_LEN) bufferRef.current.shift();
+      setBufLen(bufferRef.current.length);
 
-      if (!modelReady) {
-        const next = { label: 'model-not-ready', confidence: 0 };
-        setPrediction(next);
-        onResultRef.current?.(next);
-        return;
-      }
+      frameCountRef.current = (frameCountRef.current + 1) % INFER_EVERY;
+      if (frameCountRef.current !== 0) return;
+      if (bufferRef.current.length < SEQ_LEN) return;
 
-      if (sequenceRef.current.length < sequenceLength) {
-        const next = {
-          label: 'collecting',
-          confidence: 0,
-          frames: sequenceRef.current.length,
-          required: sequenceLength,
-        };
-        setPrediction(next);
-        onResultRef.current?.(next);
-        return;
-      }
+      const buf = bufferRef.current.slice();
+      ;(async () => {
+        try {
+          const flat = new Float32Array(SEQ_LEN * INPUT_DIM);
+          buf.forEach((f, i) => flat.set(f, i * INPUT_DIM));
+          const tensor = new ort.Tensor('float32', flat, [1, SEQ_LEN, INPUT_DIM]);
+          const output = await sessionRef.current.run({ sequence: tensor });
+          if (!mountedRef.current || !isRecording || confirmedRef.current) return;
 
-      runPrediction();
+          const probs  = softmax(Array.from(output.logits.data));
+          const maxIdx = probs.indexOf(Math.max(...probs));
+          const label  = classesRef.current[maxIdx];
+          const conf   = probs[maxIdx];
+
+          setLive({ label, confidence: conf, probs });
+          onFrameRef.current?.({ label, confidence: conf, probs });
+
+          const streak = streakRef.current;
+          if (label === streak.label && conf >= confirmThresh) {
+            streak.count++;
+            if (streak.count >= confirmCount) {
+              confirmedRef.current = true;
+              onConfirmedRef.current?.({ label, confidence: conf, probs });
+            }
+          } else {
+            streakRef.current = { label, count: conf >= confirmThresh ? 1 : 0 };
+          }
+        } catch (e) {
+          if (mountedRef.current) console.warn('ONNX 推論失敗：', e);
+        }
+      })();
     };
 
-    const hands = new Hands({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+    const holistic = new Holistic({
+      locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}`,
     });
-    hands.setOptions({
-      maxNumHands: 2,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.55,
-      minTrackingConfidence: 0.55,
+    holistic.setOptions({
+      modelComplexity:          1,
+      smoothLandmarks:          true,
+      minDetectionConfidence:   0.45,
+      minTrackingConfidence:    0.45,
+      refineFaceLandmarks:      false,
     });
-    hands.onResults(handleResults);
-    handsRef.current = hands;
+    holistic.onResults(handleResults);
 
     let cancelled = false;
     const camera = new Camera(video, {
       onFrame: async () => {
         if (!mountedRef.current || cancelled) return;
         if (!video || video.readyState < 2 || !video.videoWidth) return;
-        try {
-          await hands.send({ image: video });
-        } catch (error) {
-          if (!cancelled) console.warn('MediaPipe Hands failed:', error);
-        }
+        try { await holistic.send({ image: video }); } catch (_) {}
       },
-      width: 640,
-      height: 480,
+      width: 640, height: 480,
     });
     camera.start();
-    cameraRef.current = camera;
 
     return () => {
       cancelled = true;
-      try { camera.stop(); } catch (_) {}
-      try { hands.close(); } catch (_) {}
-      cameraRef.current = null;
-      handsRef.current = null;
+      try { camera.stop(); }   catch (_) {}
+      try { holistic.close(); } catch (_) {}
     };
-  }, [ready, modelReady, sequenceLength, inputDim]);
+  }, [ready, isRecording, confirmCount, confirmThresh]);
 
-  const overlayText = (() => {
-    if (!ready) return '載入中';
-    if (modelMessage === 'missing') return '等待詞彙模型';
-    if (!prediction) return '等待手勢';
-    if (prediction.label === 'collecting') return `${prediction.frames}/${prediction.required}`;
-    if (prediction.label === 'no-hand') return '未偵測到手部';
-    return `${prediction.label} ${Math.round((prediction.confidence || 0) * 100)}%`;
-  })();
+  const progress = Math.min(Math.round((bufLen / SEQ_LEN) * 100), 100);
 
   return (
-    <div style={styles.wrap}>
-      <video
-        ref={videoRef}
-        playsInline
-        muted
-        autoPlay
-        style={styles.video}
+    <div style={{ position: 'relative', width: '100%' }}>
+      <video ref={videoRef} playsInline muted autoPlay
+        style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
       />
-      <canvas
-        ref={canvasRef}
-        width={640}
-        height={480}
-        style={styles.canvas}
+      <canvas ref={canvasRef} width={640} height={480}
+        style={{ width: '100%', borderRadius: 12, background: '#1a1a2e', display: 'block' }}
       />
-      <div style={styles.overlay}>{overlayText}</div>
-      <div style={styles.footer}>
-        <span>序列長度 {sequenceRef.current.length}/{sequenceLength}</span>
-        <span>{modelReady ? '模型已載入' : '模型未載入'}</span>
+
+      <div style={s.overlay}>
+        {error     ? <span style={{ color: '#f87171' }}>⚠ {error}</span>
+         : !ready  ? <span style={{ color: '#94a3b8' }}>模型載入中…</span>
+         : !isRecording ? <span style={{ color: '#475569' }}>準備就緒</span>
+         : live    ? <span style={{ color: '#fbbf24', fontWeight: 700 }}>{live.label} {(live.confidence * 100).toFixed(0)}%</span>
+         :            <span style={{ color: '#94a3b8' }}>{bufLen < SEQ_LEN ? `累積 ${bufLen}/${SEQ_LEN} 幀` : '辨識中…'}</span>
+        }
       </div>
+
+      {ready && isRecording && (
+        <div style={s.progressTrack}>
+          <div style={{ ...s.progressFill, width: `${progress}%` }} />
+        </div>
+      )}
     </div>
   );
 }
 
-const styles = {
-  wrap: {
-    position: 'relative',
-    width: '100%',
-    maxWidth: 760,
-    aspectRatio: '4 / 3',
-    background: '#020617',
-    border: '1px solid #1f2937',
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  video: {
-    position: 'absolute',
-    left: '-9999px',
-    top: 0,
-    width: 1,
-    height: 1,
-    opacity: 0,
-    pointerEvents: 'none',
-  },
-  canvas: {
-    width: '100%',
-    height: '100%',
-    display: 'block',
-    objectFit: 'cover',
-  },
+const s = {
   overlay: {
-    position: 'absolute',
-    top: 14,
-    left: 14,
-    background: 'rgba(15,23,42,0.82)',
-    border: '1px solid rgba(148,163,184,0.25)',
-    borderRadius: 6,
-    color: '#e0f2fe',
-    padding: '8px 12px',
-    fontSize: 18,
-    fontWeight: 800,
+    position: 'absolute', top: 12, left: 12,
+    padding: '6px 14px',
+    background: 'rgba(0,0,0,0.65)',
+    color: '#fff', borderRadius: 8, fontSize: 18,
+    backdropFilter: 'blur(4px)',
   },
-  footer: {
-    position: 'absolute',
-    left: 14,
-    right: 14,
-    bottom: 14,
-    display: 'flex',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 12,
-    color: '#cbd5e1',
-    fontSize: 13,
-    background: 'rgba(15,23,42,0.74)',
-    border: '1px solid rgba(148,163,184,0.2)',
-    borderRadius: 6,
-    padding: '8px 10px',
+  progressTrack: {
+    height: 4, background: '#1e293b', borderRadius: 99,
+    overflow: 'hidden', marginTop: 6,
+  },
+  progressFill: {
+    height: '100%', background: '#3b82f6',
+    borderRadius: 99, transition: 'width 0.1s ease',
   },
 };

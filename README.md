@@ -94,10 +94,19 @@ uvicorn app.main:app --reload --port 8000
 - `WordQuizTab.jsx`：隨機 8 題，鏡頭偵測自動過關
 - `WordRecognitionTab.jsx`：自由辨識模式
 
-### Week 3（5/22）— Kaggle 資料集（進行中）
-- 目標：Google ASL Signs（Kaggle 競賽資料集）
-- 內容：250 個詞彙 × 380 筆，預抽好的 Holistic 特徵
-- 計畫：訓練 Transformer 模型，目標準確率 90%+，詞彙擴充至 250 個
+### Week 3（5/22）— Kaggle 下載 + GitHub 更名
+- Kaggle ASL Signs 資料集下載完成（37.4 GB zip → 56 GB 解壓）
+- 全站 TSL → ASL 更名，GitHub repo 改名為 `ASL-learning-platform`
+- 修復 `WordVideoCapture.jsx` 舊版問題（Hands 136 維 → Holistic 225 維）
+- 安裝 `@mediapipe/holistic`，修正 classes 檔名
+
+### Week 4（5/23）— Kaggle 資料處理 + 250 詞模型訓練
+- 寫 `prepare_kaggle_dataset.py`：parquet → 225 維 npz（94,477 筆）
+- 發現並修復資料 NaN 問題（25.8% 缺失值 → nan_to_num 清除）
+- Transformer 嘗試失敗（DirectML 不支援反向傳播）
+- ✅ **GRU 250 詞模型訓練完成：Test acc 62.2%**
+  - CPU 訓練（GRU 不支援 DirectML）
+  - 詞彙從 10 個擴充至 **250 個**
 
 ---
 
@@ -107,10 +116,10 @@ uvicorn app.main:app --reload --port 8000
 |------|------|------|--------|
 | 字母辨識 | MediaPipe Hands 63 維（靜態）| MLP | ~95% |
 | 動態字母 J/Z | 手腕軌跡 | 規則式偵測器 | — |
-| 詞彙辨識 | MediaPipe Holistic 225 維 × 30 幀 | GRU | 81.3% |
+| 詞彙辨識 | MediaPipe Holistic 225 維 × 30 幀 | GRU | 62.2% |
 
 ---
 
-## 📊 支援詞彙（目前 10 個）
+## 📊 支援詞彙（250 個）
 
-`Hello` / `Thank You` / `Please` / `Sorry` / `Help` / `Yes` / `No` / `Want` / `Like` / `More`
+Kaggle Google ASL Signs 競賽資料集，涵蓋日常生活、動物、顏色、動作等各類手語詞彙。

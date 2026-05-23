@@ -38,14 +38,21 @@ python train_mlp.py                # 訓練 MLP → best_mlp.pt
 python export_onnx.py              # 匯出 → sign_mlp.onnx + classes.json
 ```
 
-詞彙辨識訓練（CPU，MediaPipe Holistic 225 維 GRU，使用 ASL Citizen 資料集）：
+詞彙辨識訓練（CPU，Kaggle 250 詞 GRU）：
 ```
 cd ai-backend/pose_recognition/scripts
+python prepare_kaggle_dataset.py      # parquet → kaggle_sequences_250words.npz
+# 注意：npz 生成後需清除 NaN：np.nan_to_num(X, nan=0.0) 再 np.savez(...)
+python train_kaggle_gru.py            # → best_kaggle_gru.pt + asl_words_sequence.onnx + words_classes.json
+# 手動複製 onnx + words_classes.json 到 frontend/public/models/
+```
+
+舊 ASL Citizen 10 詞 Pipeline（保留備用）：
+```
 python prepare_aslcitizen_subset.py   # → aslcitizen_manifest.json
-python extract_wlasl_sequences.py     # → aslcitizen_sequences.npz（Holistic 225 維）
-python train_words_mlp.py --npz aslcitizen_sequences.npz   # → best_words_model.pt
-python export_words_onnx.py           # → asl_words_sequence.onnx + words_classes.json
-# 手動複製 onnx + json 到 frontend/public/models/
+python extract_wlasl_sequences.py     # → aslcitizen_sequences.npz
+python train_words_mlp.py --npz aslcitizen_sequences.npz
+python export_words_onnx.py
 ```
 
 ## 架構
@@ -124,24 +131,24 @@ models/
 
 ## 詞彙辨識現況
 
-**目前模型：** MediaPipe Holistic 225 維 → GRU(hidden=64) → Linear(32) → ReLU → Linear(10)
+**目前模型（Kaggle 250 詞）：** MediaPipe Holistic 225 維 → GRU(hidden=128, 2層) → Linear → 250 類
+- **Test acc：62.2%，Val acc：63.1%**（250 詞，難度高）
+- ONNX：`frontend/public/models/asl_words_sequence.onnx`（1MB）
+- Classes：`frontend/public/models/words_classes.json`（250 詞）
 
-**目標 10 詞**（ASL Citizen 資料集拼法）：
-`hello, thankyou, please, sorry, help, yes, no, want1, like, more`
+**訓練資料：** `C:\data\kaggle_asl\`（56 GB，94,477 筆序列，250 詞，每詞 ~380 筆）
+- Kaggle Google ASL Signs 競賽資料集
+- Parquet 格式（frame, type, landmark_index, x, y, z）
+- 注意：prepare_kaggle_dataset.py 生成的 npz 含大量 NaN，需用 `np.nan_to_num(X, nan=0.0)` 清除後再訓練
 
-注意：資料集中是 `thankyou`（連寫）、`want1`（加數字），UI 顯示時需 mapping。
+**DirectML 相容性問題（重要）：**
+- GRU：`aten::_thnn_fused_gru_cell` 不支援 DirectML → 強制 CPU 訓練
+- Transformer：反向傳播不正確 → loss 不收斂，不可用 DirectML 訓練
+- 解法：序列模型一律用 CPU 訓練（`device = torch.device('cpu')`）
 
-**訓練資料：** `C:\data\ASL_Citizen\ASL_Citizen\`（42.77 GB，83,399 支影片）
-- 每詞約 30~32 筆，train=124 / valid=36 / test=107
-- 8× 資料增強後 train=1116
-- Test acc：81.3%，Val acc：91.7%
-
-**已知問題：** like → 被偵測成 please（兩者都在胸口，30 筆樣本不足）
-
-**下一步：** Kaggle Google ASL Signs 資料集（下載中，37.4 GB zip）
-- 路徑：`C:\data\kaggle_asl\`
-- 格式：預抽好的 Holistic parquet，543 landmarks（需轉換成 225 維）
-- 250 詞 × 約 380 筆，目標準確率 90%+，計畫改用 Transformer 架構
+**舊模型（ASL Citizen 10 詞）：**
+- GRU(hidden=64)，Test acc=81.3%（10 詞），每詞只有 30 筆
+- Kaggle 資料沒有：help, sorry, want, more（這 4 詞只在 ASL Citizen）
 
 ## 動態字母 J、Z
 

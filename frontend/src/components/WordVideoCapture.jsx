@@ -7,8 +7,13 @@
 //   confirmCount  {number}  預設 3
 //   confirmThresh {number}  預設 0.70
 //
-// 特徵維度：225 = pose(33×3) + leftHand(21×3) + rightHand(21×3)
-// 與後端 extract_wlasl_sequences.py 正規化方式一致
+// 特徵維度：
+//   V3 模型 (225維): pose(33×3) + leftHand(21×3) + rightHand(21×3)
+//   V4 模型 (450維): 225 位置 + 225 速度（幀間差分）
+//
+// ⚠ 切換模型版本時修改 USE_VELOCITY：
+//   false → 225維（目前 V3）
+//   true  → 450維（V4 及之後）
 
 import React, { useRef, useEffect, useState } from 'react';
 import { Holistic } from '@mediapipe/holistic';
@@ -18,7 +23,9 @@ import * as ort     from 'onnxruntime-web';
 const MODEL_URL   = '/models/asl_words_sequence.onnx';
 const CLASSES_URL = '/models/words_classes.json';
 const SEQ_LEN     = 30;
-const INPUT_DIM   = 225;   // 99 + 63 + 63
+const POS_DIM     = 225;              // pose(99) + leftHand(63) + rightHand(63)
+const USE_VELOCITY = false;           // ← V4 上線後改成 true
+const INPUT_DIM   = USE_VELOCITY ? POS_DIM * 2 : POS_DIM;   // 225 或 450
 const INFER_EVERY = 5;
 
 // ── 特徵提取（與後端 normalize_pose / normalize_hand 對應）──────────────────
@@ -60,15 +67,37 @@ function normalizeHand(landmarks) {
   return out;
 }
 
+// 回傳 225 維位置特徵（buffer 永遠只存位置）
 function frameFeatures(results) {
   const pose  = normalizePose(results.poseLandmarks);
   const left  = normalizeHand(results.leftHandLandmarks);
   const right = normalizeHand(results.rightHandLandmarks);
-  const feat  = new Float32Array(INPUT_DIM);
+  const feat  = new Float32Array(POS_DIM);
   feat.set(pose,  0);
   feat.set(left,  99);
   feat.set(right, 162);
   return feat;
+}
+
+// 從位置 buffer 建立推論用的 flat array（支援 225 或 450 維）
+function buildInputFlat(buf) {
+  const flat = new Float32Array(SEQ_LEN * INPUT_DIM);
+  if (!USE_VELOCITY) {
+    // 225 維：直接展平
+    buf.forEach((f, i) => flat.set(f, i * POS_DIM));
+  } else {
+    // 450 維：位置 + 速度（幀間差分，第 0 幀速度為 0）
+    buf.forEach((pos, i) => {
+      flat.set(pos, i * INPUT_DIM);                   // 前 225：位置
+      if (i > 0) {
+        const vel = new Float32Array(POS_DIM);
+        for (let j = 0; j < POS_DIM; j++) vel[j] = pos[j] - buf[i - 1][j];
+        flat.set(vel, i * INPUT_DIM + POS_DIM);       // 後 225：速度
+      }
+      // i===0 時速度為 0，Float32Array 預設全 0，不需處理
+    });
+  }
+  return flat;
 }
 
 function softmax(arr) {
@@ -200,16 +229,18 @@ export default function WordVideoCapture({
       const buf = bufferRef.current.slice();
       ;(async () => {
         try {
-          const flat = new Float32Array(SEQ_LEN * INPUT_DIM);
-          buf.forEach((f, i) => flat.set(f, i * INPUT_DIM));
+          const flat   = buildInputFlat(buf);
           const tensor = new ort.Tensor('float32', flat, [1, SEQ_LEN, INPUT_DIM]);
-          const output = await sessionRef.current.run({ sequence: tensor });
+          const feeds  = { input: tensor };   // V3/V4 模型 input name = 'input'
+          const output = await sessionRef.current.run(feeds);
           if (!mountedRef.current || !isRecording || confirmedRef.current) return;
 
-          const probs  = softmax(Array.from(output.logits.data));
-          const maxIdx = probs.indexOf(Math.max(...probs));
-          const label  = classesRef.current[maxIdx];
-          const conf   = probs[maxIdx];
+          // output name = 'output'（V3/V4）
+          const rawData = output.output?.data ?? output.logits?.data ?? Object.values(output)[0].data;
+          const probs   = softmax(Array.from(rawData));
+          const maxIdx  = probs.indexOf(Math.max(...probs));
+          const label   = classesRef.current[maxIdx];
+          const conf    = probs[maxIdx];
 
           setLive({ label, confidence: conf, probs });
           onFrameRef.current?.({ label, confidence: conf, probs });

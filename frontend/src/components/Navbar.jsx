@@ -4,8 +4,7 @@ import { Link, NavLink } from 'react-router-dom';
 const navItems = [
   { to: '/', label: '首頁', end: true },
   { to: '/practice', label: '字母練習' },
-  { to: '/asl-words', label: '詞彙辨識' },
-  { to: '/vocabulary', label: '字彙資料' },
+  { to: '/asl-words', label: '詞彙練習' },
   { to: '/profile', label: '個人頁' },
 ];
 

@@ -1,68 +1,30 @@
-// Practice.jsx — 學習中心（字母區 / 詞彙區）
+// Practice.jsx — 字母練習（學習 / 闖關 / 溝通器）
 
 import React, { useState } from 'react';
-import LearnTab           from '../components/practice/LearnTab';
-import QuizTab            from '../components/practice/QuizTab';
-import CommunicatorTab    from '../components/practice/CommunicatorTab';
-import WordLearnTab       from '../components/practice/WordLearnTab';
-import WordQuizTab        from '../components/practice/WordQuizTab';
-import WordRecognitionTab from '../components/practice/WordRecognitionTab';
+import LearnTab        from '../components/practice/LearnTab';
+import QuizTab         from '../components/practice/QuizTab';
+import CommunicatorTab from '../components/practice/CommunicatorTab';
 
-const SECTIONS = [
-  { id: 'letters', label: '✋ 字母' },
-  { id: 'words',   label: '🔤 詞彙' },
-];
-
-const LETTER_TABS = [
+const TABS = [
   { id: 'learn',        label: '📖 學習 A~Z' },
   { id: 'quiz',         label: '🎯 闖關測驗' },
   { id: 'communicator', label: '💬 拼字溝通器' },
 ];
 
-const WORD_TABS = [
-  { id: 'word-learn', label: '📚 詞彙學習' },
-  { id: 'word-quiz',  label: '🎯 詞彙闖關' },
-  { id: 'word-recog', label: '🧠 自由辨識' },
-];
-
 export default function Practice() {
-  const [section, setSection]           = useState('letters');
-  const [letterTab, setLetterTab]       = useState('learn');
-  const [wordTab, setWordTab]           = useState('word-learn');
+  const [activeTab,      setActiveTab]      = useState('learn');
   const [selectedLetter, setSelectedLetter] = useState(null);
 
-  const handleSectionChange = (id) => {
-    setSection(id);
-    setSelectedLetter(null);
-  };
-
-  const tabs    = section === 'letters' ? LETTER_TABS : WORD_TABS;
-  const activeTab = section === 'letters' ? letterTab : wordTab;
-  const setTab  = section === 'letters' ? setLetterTab : setWordTab;
-
   const handleTabChange = (id) => {
-    setTab(id);
+    setActiveTab(id);
     setSelectedLetter(null);
   };
 
   return (
     <div style={styles.page}>
-      {/* ── 區塊切換（字母 / 詞彙）─────────────────────────── */}
-      <div style={styles.sectionBar}>
-        {SECTIONS.map(sec => (
-          <button
-            key={sec.id}
-            style={{ ...styles.sectionBtn, ...(section === sec.id ? styles.sectionActive : {}) }}
-            onClick={() => handleSectionChange(sec.id)}
-          >
-            {sec.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ── 子 Tab 列 ────────────────────────────────────────── */}
+      {/* ── Tab 列 ────────────────────────────────────────── */}
       <div style={styles.tabBar}>
-        {tabs.map(tab => (
+        {TABS.map(tab => (
           <button
             key={tab.id}
             style={{ ...styles.tabBtn, ...(activeTab === tab.id ? styles.tabActive : {}) }}
@@ -75,15 +37,9 @@ export default function Practice() {
 
       {/* ── 內容區 ───────────────────────────────────────────── */}
       <div style={styles.content}>
-        {/* 字母區 */}
-        {section === 'letters' && letterTab === 'learn'        && <LearnTab selectedLetter={selectedLetter} setSelectedLetter={setSelectedLetter} />}
-        {section === 'letters' && letterTab === 'quiz'         && <QuizTab />}
-        {section === 'letters' && letterTab === 'communicator' && <CommunicatorTab />}
-
-        {/* 詞彙區 */}
-        {section === 'words' && wordTab === 'word-learn' && <WordLearnTab />}
-        {section === 'words' && wordTab === 'word-quiz'  && <WordQuizTab />}
-        {section === 'words' && wordTab === 'word-recog' && <WordRecognitionTab />}
+        {activeTab === 'learn'        && <LearnTab selectedLetter={selectedLetter} setSelectedLetter={setSelectedLetter} />}
+        {activeTab === 'quiz'         && <QuizTab />}
+        {activeTab === 'communicator' && <CommunicatorTab />}
       </div>
     </div>
   );

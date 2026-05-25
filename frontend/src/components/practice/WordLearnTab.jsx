@@ -108,8 +108,9 @@ function WordDetail({ data, index, total, onBack, onPrev, onNext }) {
   const handlePrev = () => { onPrev(); resetPractice(); setPractice(false); };
   const handleNext = () => { onNext(); resetPractice(); setPractice(false); };
 
-  const ytUrl     = `https://www.youtube.com/results?search_query=${encodeURIComponent(data.ytSearch)}`;
-  const isCorrect = confirmed?.label === data.word;
+  const ytUrl        = `https://www.youtube.com/results?search_query=${encodeURIComponent(data.ytSearch)}`;
+  const handspeakUrl = `https://www.handspeak.com/word/search/index.php?id=${encodeURIComponent(data.word)}`;
+  const isCorrect    = confirmed?.label === data.word;
   const catInfo   = CATEGORIES.find(c => c.key === data.category);
 
   return (
@@ -136,22 +137,25 @@ function WordDetail({ data, index, total, onBack, onPrev, onNext }) {
             <p style={s.infoText}>{data.hint}</p>
           </div>
 
-          {/* YouTube 示範 */}
+          {/* 示範影片連結 */}
           <div style={s.ytSection}>
             <div style={s.infoLabel}>示範影片</div>
-            <div style={s.ytEmbed}>
-              <iframe
-                src={`https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(data.ytSearch)}`}
-                title={`ASL ${data.display}`}
-                frameBorder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                style={s.ytIframe}
-              />
+            <div style={s.videoLinks}>
+              <a href={ytUrl} target="_blank" rel="noopener noreferrer" style={s.videoBtn}>
+                <span style={s.videoBtnIcon}>▶</span>
+                <span>
+                  <div style={s.videoBtnTitle}>YouTube 搜尋</div>
+                  <div style={s.videoBtnSub}>ASL {data.display} 示範影片</div>
+                </span>
+              </a>
+              <a href={handspeakUrl} target="_blank" rel="noopener noreferrer" style={{...s.videoBtn, ...s.videoBtnGreen}}>
+                <span style={s.videoBtnIcon}>🤟</span>
+                <span>
+                  <div style={s.videoBtnTitle}>Handspeak</div>
+                  <div style={s.videoBtnSub}>查看詳細手勢動畫</div>
+                </span>
+              </a>
             </div>
-            <a href={ytUrl} target="_blank" rel="noopener noreferrer" style={s.ytLink}>
-              在 YouTube 搜尋更多示範 →
-            </a>
           </div>
 
           <button
@@ -248,10 +252,18 @@ const s = {
   infoLabel:   { fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 },
   infoText:    { fontSize: 14, color: '#cbd5e1', lineHeight: 1.7, margin: 0 },
 
-  ytSection:   { display: 'flex', flexDirection: 'column', gap: 8 },
-  ytEmbed:     { borderRadius: 10, overflow: 'hidden', background: '#0f172a' },
-  ytIframe:    { width: '100%', height: 200, display: 'block', border: 'none' },
-  ytLink:      { fontSize: 12, color: '#3b82f6', textDecoration: 'none', textAlign: 'right' },
+  ytSection:      { display: 'flex', flexDirection: 'column', gap: 8 },
+  videoLinks:     { display: 'flex', flexDirection: 'column', gap: 10 },
+  videoBtn:       {
+    display: 'flex', alignItems: 'center', gap: 14,
+    padding: '14px 16px', borderRadius: 12, textDecoration: 'none',
+    background: '#1e3a5f', border: '1px solid #3b82f6',
+    transition: 'opacity 0.15s',
+  },
+  videoBtnGreen:  { background: '#14532d', border: '1px solid #22c55e' },
+  videoBtnIcon:   { fontSize: 22, lineHeight: 1 },
+  videoBtnTitle:  { fontSize: 14, fontWeight: 700, color: '#f1f5f9', marginBottom: 2 },
+  videoBtnSub:    { fontSize: 12, color: '#94a3b8' },
 
   practiceBtn:    { padding: '12px', background: '#1e3a5f', border: '2px solid #3b82f6', borderRadius: 10, color: '#93c5fd', fontSize: 15, fontWeight: 600, cursor: 'pointer' },
   practiceBtnOn:  { background: '#7f1d1d', borderColor: '#ef4444', color: '#fca5a5' },

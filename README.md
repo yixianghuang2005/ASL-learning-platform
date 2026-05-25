@@ -1,4 +1,4 @@
-# 🤟 手語心連 — AI 即時手語學習平台
+# 🤟 ASL Learning — AI 即時手語學習平台
 
 > 利用 MediaPipe + ONNX 深度學習技術，讓任何人都能在瀏覽器中即時練習 ASL 美國手語。
 
@@ -10,22 +10,46 @@
 ## 🎯 專案特色
 
 - **純前端 AI 推論**：MediaPipe + ONNX.js，不需後端，低延遲即時辨識
-- **字母辨識**：ASL 26 個字母（含動態手勢 J、Z）
-- **詞彙辨識**：10 個常用詞彙，GRU 序列模型，81.3% 準確率
-- **完整學習流程**：學習 → 闖關測驗 → 自由練習
+- **字母辨識**：ASL 26 個字母（含動態手勢 J、Z），~95% 準確率
+- **詞彙辨識**：250 個常用詞彙，GRU 序列模型，69.2% 準確率（持續提升中）
+- **完整學習流程**：學習 → 闖關測驗（有分數紀錄）→ 自由練習
+- **分數系統**：localStorage 儲存個人最佳，Firebase Firestore 選配
 
 ---
 
 ## 📁 專案結構
 
 ```
-tsl-learning-platform/
-├── frontend/          → React 前端（MediaPipe + ONNX 推論）
-│   └── public/models/ → ONNX 模型檔（sign_mlp.onnx, asl_words_sequence.onnx）
-├── ai-backend/        → FastAPI 後端 + 訓練 Pipeline
-│   └── pose_recognition/scripts/ → 特徵提取、訓練、匯出腳本
-├── docs/              → API 規格文件
-└── scripts/           → 資料前處理工具
+ASL-learning-platform/
+├── frontend/                        → React 前端（MediaPipe + ONNX 推論）
+│   ├── public/models/               → ONNX 模型檔
+│   │   ├── sign_mlp.onnx            → 字母 MLP（63 維）
+│   │   ├── classes.json             → 字母類別（26 字母）
+│   │   ├── asl_words_sequence.onnx  → 詞彙 GRU（225 維 × 30 幀）
+│   │   └── words_classes.json       → 詞彙類別（250 詞）
+│   └── src/
+│       ├── pages/
+│       │   ├── Practice.jsx         → 字母練習（學習/闖關/溝通器）
+│       │   └── WordRecognition.jsx  → 詞彙練習（學習/闖關/自由辨識）
+│       ├── components/practice/
+│       │   ├── LearnTab.jsx         → 字母學習（A~Z 卡片）
+│       │   ├── QuizTab.jsx          → 字母闖關（含分數紀錄）
+│       │   ├── CommunicatorTab.jsx  → 拼字溝通器
+│       │   ├── WordLearnTab.jsx     → 詞彙學習（250 詞 + 搜尋 + 分類）
+│       │   ├── WordQuizTab.jsx      → 詞彙闖關（250 詞隨機出題 + 分數）
+│       │   └── WordRecognitionTab.jsx → 自由辨識
+│       ├── utils/
+│       │   ├── aslWordData.js       → 250 詞資料庫（英文/中文/類別/提示）
+│       │   └── jzMotionDetector.js  → J/Z 軌跡偵測器（規則式）
+│       └── services/
+│           └── firebaseClient.js    → Firebase + localStorage 雙軌分數儲存
+├── ai-backend/                      → FastAPI 後端 + 訓練 Pipeline
+│   └── pose_recognition/scripts/
+│       ├── prepare_kaggle_dataset.py   → parquet → npz 轉換
+│       ├── train_kaggle_gru.py         → GRU 基線訓練（CPU）
+│       ├── train_kaggle_best.py        → 改良版 GRU（CPU，69.2%）
+│       └── train_colab_transformer.py  → Transformer 訓練（Colab GPU，目標 85-92%）
+└── docs/                            → API 規格文件
 ```
 
 ---
@@ -35,9 +59,8 @@ tsl-learning-platform/
 ### 前端
 ```bash
 cd frontend
-npm install
-npm start
-# 開啟 http://localhost:3000
+npm.cmd install        # Windows 用 npm.cmd
+npm.cmd start          # 開啟 http://localhost:3000
 ```
 
 ### AI 後端（選用，推論已移至前端）
@@ -49,77 +72,64 @@ uvicorn app.main:app --reload --port 8000
 
 ---
 
-## 📋 開發紀錄
-
-### Week 1（5/11）— 專案初始化
-- 建立 React 前端 + FastAPI 後端腳手架
-- 路由規劃：`/`、`/practice`、`/vocabulary`、`/profile`
-
-### Week 1（5/12）— 字母辨識基礎
-- 整合 ASL 26 字母資料集
-- 建立快速測試腳本
-
-### Week 2（5/17）— 專案重整
-- 移除 git 追蹤的大型模型檔
-- 確立前後端分離架構
-
-### Week 2（5/18）— Practice 頁面
-- 新增三個 Tab：📖 學習 A\~Z、🎯 闖關測驗、💬 拼字溝通器
-- `QuizTab`：滑動窗口穩定度邏輯（15 幀窗口，10 次正確過關）
-- `CommunicatorTab`：即時拼字溝通器
-
-### Week 2（5/19）— 從 YOLOv8 遷移到純前端 MediaPipe
-- 放棄 FastAPI YOLOv8 路線，改用純前端 MediaPipe Hands + ONNX MLP
-- `PoseVideoCapture.jsx`：21 關節點 → 63 維 → MLP 推論
-- 推論完全在瀏覽器執行，不依賴後端
-
-### Week 3（5/20）— 動態字母 J、Z
-- 靜態 MLP 無法辨識軌跡動作，新增規則式 `JZMotionDetector`
-- J：「I」手型 + 縱向鉤尾軌跡；Z：「1」手型 + Z 字型軌跡
-
-### Week 3（5/21）— 詞彙辨識完整 Pipeline
-
-**資料集選擇：**
-- WLASL（YouTube 下載）：30\~50% 連結失效，放棄
-- ✅ **ASL Citizen**（Microsoft Research）：42.77 GB，83,399 支影片，下載完整
-
-**技術演進：**
-- 第一版：MediaPipe Hands 136 維 → Test acc 77.3%（缺乏身體位置資訊）
-- ✅ **第二版：MediaPipe Holistic 225 維 → GRU 模型 → Test acc 81.3%**
-  - 特徵：33 pose 關節 + 左右手各 21 點，含身體相對位置
-  - 每詞約 30 筆，8× 資料增強
-
-**UI 大重構（字母區 / 詞彙區）：**
-- `WordLearnTab.jsx`：詞彙卡片 + YouTube 示範 + 鏡頭練習
-- `WordQuizTab.jsx`：隨機 8 題，鏡頭偵測自動過關
-- `WordRecognitionTab.jsx`：自由辨識模式
-
-### Week 3（5/22）— Kaggle 下載 + GitHub 更名
-- Kaggle ASL Signs 資料集下載完成（37.4 GB zip → 56 GB 解壓）
-- 全站 TSL → ASL 更名，GitHub repo 改名為 `ASL-learning-platform`
-- 修復 `WordVideoCapture.jsx` 舊版問題（Hands 136 維 → Holistic 225 維）
-- 安裝 `@mediapipe/holistic`，修正 classes 檔名
-
-### Week 4（5/23）— Kaggle 資料處理 + 250 詞模型訓練
-- 寫 `prepare_kaggle_dataset.py`：parquet → 225 維 npz（94,477 筆）
-- 發現並修復資料 NaN 問題（25.8% 缺失值 → nan_to_num 清除）
-- Transformer 嘗試失敗（DirectML 不支援反向傳播）
-- ✅ **GRU 250 詞模型訓練完成：Test acc 62.2%**
-  - CPU 訓練（GRU 不支援 DirectML）
-  - 詞彙從 10 個擴充至 **250 個**
-
----
-
 ## 🤖 AI 模型架構
 
 | 用途 | 特徵 | 模型 | 準確率 |
 |------|------|------|--------|
 | 字母辨識 | MediaPipe Hands 63 維（靜態）| MLP | ~95% |
 | 動態字母 J/Z | 手腕軌跡 | 規則式偵測器 | — |
-| 詞彙辨識 | MediaPipe Holistic 225 維 × 30 幀 | GRU | 62.2% |
+| 詞彙辨識（現役）| MediaPipe Holistic 225 維 × 30 幀 | GRU（hidden=256, 3層）| 69.2% |
+| 詞彙辨識（開發中）| 同上 | Transformer（Colab GPU）| 目標 85–92% |
 
 ---
 
-## 📊 支援詞彙（250 個）
+## 📊 支援詞彙（250 個，12 類）
 
-Kaggle Google ASL Signs 競賽資料集，涵蓋日常生活、動物、顏色、動作等各類手語詞彙。
+Kaggle Google ASL Signs 競賽資料集，涵蓋：
+
+| 類別 | 範例 |
+|------|------|
+| 🐾 動物 | cat, dog, elephant, tiger, zebra... |
+| 🍎 食物 | apple, pizza, milk, chocolate... |
+| 👥 人物 | mom, dad, grandma, police... |
+| 🌈 顏色 | red, blue, green, yellow... |
+| 🏠 家居 | home, bed, table, refrigerator... |
+| 🌿 自然 | sun, rain, snow, tree... |
+| 🏃 動作 | jump, dance, eat, sleep... |
+| 😊 情緒 | happy, sad, mad, sick... |
+| 🧍 身體 | eye, ear, nose, mouth... |
+| 📦 物品 | book, car, doll, toothbrush... |
+| 💬 常用 | yes, no, please, thankyou... |
+| ⏰ 時間 | morning, night, tomorrow... |
+
+---
+
+## 📋 開發紀錄
+
+### Week 1（5/11–5/12）— 專案初始化
+- 建立 React 前端 + FastAPI 後端腳手架
+- 路由規劃、ASL 26 字母資料集整合
+
+### Week 2（5/17–5/19）— 字母辨識主線
+- 從 YOLOv8 後端辨識遷移到純前端 MediaPipe Hands + ONNX MLP
+- Practice 頁面：學習 A~Z ｜ 闖關測驗 ｜ 拼字溝通器
+
+### Week 3（5/20–5/22）— 動態字母 + 詞彙辨識 + 資料集
+- J/Z 動態字母規則式偵測器
+- ASL Citizen 10 詞 GRU → Holistic 225 維 → 81.3%
+- Kaggle ASL Signs 下載（37.4 GB），全站 TSL → ASL 更名
+
+### Week 4（5/23）— Kaggle 250 詞訓練
+- `prepare_kaggle_dataset.py`：94,477 筆序列 npz
+- GRU 250 詞訓練：Test acc 62.2%（CPU，60 epochs）
+
+### Week 4（5/24）— 模型優化
+- `train_kaggle_best.py`：hidden=256, 3層, Warmup+Cosine LR, 強化增強
+- 隔夜訓練結果：**Test acc 69.2%（+7%）**，早停於 Epoch 62
+
+### Week 4（5/25）— 前端大重構 + 分數系統 + Colab 訓練腳本
+- **詞彙學習頁擴充至 250 詞**：搜尋列 + 12 類別篩選，每詞含中文/提示/YouTube
+- **分數機制**：字母闖關 + 詞彙闖關均新增個人最佳紀錄（localStorage + Firebase 選配）
+- **導航重整**：字母練習 / 詞彙練習 分頁，移除冗餘的字彙資料頁
+- **`aslWordData.js`**：250 詞完整資料庫（英文名/中文/類別/手勢說明）
+- **`train_colab_transformer.py`**：Colab GPU Transformer 訓練腳本（目標 85–92%）

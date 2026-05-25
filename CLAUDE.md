@@ -60,33 +60,33 @@ python export_words_onnx.py
 ### 前端（`frontend/src/`）
 
 ```
-App.jsx                    — 路由（/, /practice, /vocabulary, /profile）+ Firebase Auth 狀態
+App.jsx                    — 路由（/, /practice, /asl-words, /profile）
 pages/
-  Practice.jsx             — 兩層導航：字母區 / 詞彙區 × 各 3 個子 Tab
-  Vocabulary.jsx           — 詞彙瀏覽
-  Profile.jsx              — Firebase 用戶資料
+  Practice.jsx             — 字母練習（Tab：學習A~Z / 闖關測驗 / 拼字溝通器）
+  WordRecognition.jsx      — 詞彙練習（Tab：詞彙學習 / 詞彙闖關 / 自由辨識）
+  Profile.jsx              — Firebase 用戶資料（尚未完整）
 components/
   PoseVideoCapture.jsx     — 字母推論元件（MediaPipe Hands + MLP）
   VideoCapture.jsx         — 舊版 YOLOv8（已停用）
+  WordVideoCapture.jsx     — 詞彙推論元件（MediaPipe Holistic + GRU）
   practice/
     LearnTab.jsx           — 字母學習（字母卡 + 詳細練習頁）
-    QuizTab.jsx            — 字母闖關測驗
+    QuizTab.jsx            — 字母闖關（分數紀錄 localStorage/Firestore）
     CommunicatorTab.jsx    — 拼字溝通器
-    WordLearnTab.jsx       — 詞彙學習（詞彙卡 + YouTube 示範 + 鏡頭練習）
-    WordQuizTab.jsx        — 詞彙闖關（隨機 8 題，鏡頭偵測自動過關）
+    WordLearnTab.jsx       — 詞彙學習（250詞 + 搜尋 + 12類別篩選）
+    WordQuizTab.jsx        — 詞彙闖關（250詞隨機出題 + 分數紀錄）
     WordRecognitionTab.jsx — 自由辨識（idle/recording/result 狀態機）
-  WordVideoCapture.jsx     — 詞彙推論元件（MediaPipe Holistic + GRU）
 utils/
+  aslWordData.js           — 250 詞資料庫（英文/中文/類別/提示，WORD_DATA/CATEGORIES）
   jzMotionDetector.js      — J/Z 軌跡偵測器（純規則式）
 services/
-  aiApiClient.js           — FastAPI 後端 HTTP 封裝（目前主路線不需要）
-  firebaseClient.js        — Firebase Auth/Firestore 封裝
+  firebaseClient.js        — localStorage 分數 + 選配 Firebase Firestore
 ```
 
-**Practice.jsx 導航結構：**
-- 頂層切換：字母區 / 詞彙區
-- 字母區子 Tab：📖 學習 A~Z ｜ 🎯 闖關測驗 ｜ 💬 拼字溝通器
-- 詞彙區子 Tab：📚 詞彙學習 ｜ 🎯 詞彙闖關 ｜ 🧠 自由辨識
+**導航結構（2025-05-25 重整後）：**
+- `/practice` → 字母練習：📖 學習 A~Z ｜ 🎯 闖關測驗 ｜ 💬 拼字溝通器
+- `/asl-words` → 詞彙練習：📚 詞彙學習 ｜ 🎯 詞彙闖關 ｜ 🧠 自由辨識
+- `/vocabulary` → redirect 到 `/asl-words`（舊連結相容）
 
 **`PoseVideoCapture.jsx`（字母）推論流程：**
 1. MediaPipe Hands 抽 21 個關節點（63 維）

@@ -24,7 +24,7 @@ const MODEL_URL   = '/models/asl_words_sequence.onnx';
 const CLASSES_URL = '/models/words_classes.json';
 const SEQ_LEN     = 30;
 const POS_DIM     = 225;              // pose(99) + leftHand(63) + rightHand(63)
-const USE_VELOCITY = false;           // ← V4 上線後改成 true
+const USE_VELOCITY = false;           // V3：225維（V4 訓練完成後改 true）
 const INPUT_DIM   = USE_VELOCITY ? POS_DIM * 2 : POS_DIM;   // 225 或 450
 const INFER_EVERY = 5;
 

@@ -213,6 +213,10 @@ export default function WordVideoCapture({
 
       const hasHand = results.leftHandLandmarks || results.rightHandLandmarks;
       if (!hasHand) {
+        if (singleShot) {
+          // singleShot 模式：手暫時消失就暫停，不清空已累積的幀
+          return;
+        }
         bufferRef.current = [];
         setBufLen(0);
         streakRef.current = { label: null, count: 0 };

@@ -169,10 +169,10 @@ function WordDetail({ data, index, total, onBack, onPrev, onNext }) {
           </button>
         </div>
 
-        {/* 右欄：鏡頭 */}
-        {practiceMode && (
+        {/* 右欄：鏡頭 + 結果（practiceMode 或已有結果時都顯示） */}
+        {(practiceMode || confirmed) && (
           <div style={s.detailRight}>
-            {!confirmed && (
+            {practiceMode && !confirmed && (
               <WordVideoCapture
                 isRecording={practiceMode}
                 onFrame={handleFrame}
@@ -197,7 +197,7 @@ function WordDetail({ data, index, total, onBack, onPrev, onNext }) {
                 <button style={s.retryBtn} onClick={() => { resetPractice(); setPractice(true); }}>再試</button>
               </div>
             )}
-            {!confirmed && (
+            {practiceMode && !confirmed && (
               <p style={s.practiceHint}>
                 比出「<strong>{data.display}</strong>」的手勢，累積 30 幀後自動辨識
               </p>

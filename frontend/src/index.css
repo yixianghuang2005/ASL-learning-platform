@@ -1,0 +1,117 @@
+/* ── 全域重置 ────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; }
+
+/* ── Navbar 響應式 ────────────────────────────────────────── */
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  background: #111827;
+  border-bottom: 1px solid #1f2937;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  flex-wrap: wrap;
+}
+.navbar-brand {
+  color: #f8fafc;
+  text-decoration: none;
+  font-weight: 900;
+  font-size: 18px;
+  white-space: nowrap;
+}
+.navbar-links {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  flex: 1;
+}
+.navbar-link {
+  color: #cbd5e1;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 7px 10px;
+  border-radius: 6px;
+}
+.navbar-link.active {
+  color: #e0f2fe;
+  background: #1e293b;
+}
+.navbar-auth {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* ── Tab 列響應式 ────────────────────────────────────────── */
+.tab-bar {
+  display: flex;
+  gap: 8px;
+  padding: 16px 24px 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.tab-bar::-webkit-scrollbar { display: none; }
+
+.tab-btn {
+  flex-shrink: 0;
+  padding: 14px 22px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.2s, border-color 0.2s;
+}
+.tab-btn.active {
+  color: #3b82f6;
+  border-bottom-color: #3b82f6;
+}
+
+/* ── 頁面內容區 ─────────────────────────────────────────── */
+.page-content {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px 16px;
+}
+
+/* ── 首頁卡片 ────────────────────────────────────────────── */
+.home-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: center;
+}
+.home-card {
+  flex: 1 1 260px;
+  max-width: 360px;
+}
+
+/* ── 手機（≤ 480px）─────────────────────────────────────── */
+@media (max-width: 480px) {
+  .navbar { padding: 10px 14px; gap: 8px; }
+  .navbar-brand { font-size: 16px; }
+  .navbar-link { font-size: 12px; padding: 6px 7px; }
+  .navbar-auth { display: none; }   /* 手機隱藏登入按鈕 */
+
+  .tab-btn { font-size: 12px; padding: 10px 14px; }
+
+  .page-content { padding: 12px 10px; }
+}
+
+/* ── 小平板（481–768px）─────────────────────────────────── */
+@media (min-width: 481px) and (max-width: 768px) {
+  .navbar { padding: 10px 16px; }
+  .navbar-link { font-size: 13px; padding: 7px 9px; }
+}

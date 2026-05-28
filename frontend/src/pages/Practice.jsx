@@ -23,11 +23,11 @@ export default function Practice() {
   return (
     <div style={styles.page}>
       {/* ── Tab 列 ────────────────────────────────────────── */}
-      <div style={styles.tabBar}>
+      <div className="tab-bar" style={styles.tabBarBase}>
         {TABS.map(tab => (
           <button
             key={tab.id}
-            style={{ ...styles.tabBtn, ...(activeTab === tab.id ? styles.tabActive : {}) }}
+            className={'tab-btn' + (activeTab === tab.id ? ' active' : '')}
             onClick={() => handleTabChange(tab.id)}
           >
             {tab.label}
@@ -81,29 +81,14 @@ const styles = {
     color: '#3b82f6',
   },
 
-  // 子 Tab 列（較小）
-  tabBar: {
-    display: 'flex',
+  // 子 Tab 列（CSS class 控制響應式，這裡只放頁面專屬定位）
+  tabBarBase: {
     borderBottom: '1px solid #1e293b',
     background: '#0f172a',
-    padding: '0 24px',
     position: 'sticky',
-    top: 0,
+    top: 53,   // navbar 高度約 53px
     zIndex: 10,
   },
-  tabBtn: {
-    padding: '14px 22px',
-    background: 'none',
-    border: 'none',
-    borderBottom: '3px solid transparent',
-    color: '#64748b',
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: 'pointer',
-    transition: 'color 0.2s, border-color 0.2s',
-    whiteSpace: 'nowrap',
-  },
-  tabActive: { color: '#3b82f6', borderBottomColor: '#3b82f6' },
 
-  content: { padding: '24px', maxWidth: 1100, margin: '0 auto' },
+  content: { padding: '24px', maxWidth: 1100, margin: '0 auto', boxSizing: 'border-box' },
 };

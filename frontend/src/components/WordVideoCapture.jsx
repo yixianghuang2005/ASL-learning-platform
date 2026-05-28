@@ -156,7 +156,7 @@ export default function WordVideoCapture({
         ]);
         if (!mountedRef.current) return;
         sessionRef.current = session;
-        classesRef.current = classesRes.classes;
+        classesRef.current = Array.isArray(classesRes) ? classesRes : classesRes.classes;
         setReady(true);
       } catch (e) {
         if (mountedRef.current) setError(`模型載入失敗: ${e.message}`);

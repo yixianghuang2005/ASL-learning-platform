@@ -101,7 +101,10 @@ function WordDetail({ data, index, total, onBack, onPrev, onNext }) {
   const [confirmed,    setConfirmed] = useState(null);
 
   const handleFrame     = useCallback(r => setLive(r), []);
-  const handleConfirmed = useCallback(r => setConfirmed(r), []);
+  const handleConfirmed = useCallback(r => {
+    setConfirmed(r);
+    setPractice(false);   // 收到結果後自動停止鏡頭
+  }, []);
   const resetPractice   = () => { setLive(null); setConfirmed(null); };
   const togglePractice  = () => { setPractice(p => !p); resetPractice(); };
 
@@ -169,27 +172,32 @@ function WordDetail({ data, index, total, onBack, onPrev, onNext }) {
         {/* 右欄：鏡頭 */}
         {practiceMode && (
           <div style={s.detailRight}>
-            <WordVideoCapture
-              isRecording={practiceMode}
-              onFrame={handleFrame}
-              onConfirmed={handleConfirmed}
-            />
-            {liveResult && !confirmed && (
-              <div style={s.liveBox}>
-                目前偵測：<strong>{liveResult.label}</strong>（{(liveResult.confidence * 100).toFixed(0)}%）
-              </div>
+            {!confirmed && (
+              <WordVideoCapture
+                isRecording={practiceMode}
+                onFrame={handleFrame}
+                onConfirmed={handleConfirmed}
+                singleShot={true}
+              />
+            )}
+            {practiceMode && !confirmed && liveResult === null && (
+              <div style={s.liveBox}>📷 正在累積幀數，請持續比出手勢...</div>
             )}
             {confirmed && (
               <div style={{ ...s.resultBox, ...(isCorrect ? s.resultCorrect : s.resultWrong) }}>
-                {isCorrect
-                  ? `✅ 正確！辨識到「${data.display}」（${(confirmed.confidence * 100).toFixed(0)}%）`
-                  : `辨識到「${confirmed.label}」，目標是「${data.display}」，再試！`}
-                <button style={s.retryBtn} onClick={resetPractice}>再試</button>
+                <span>
+                  {isCorrect
+                    ? `✅ 正確！辨識到「${data.display}」（${(confirmed.confidence * 100).toFixed(0)}%）`
+                    : `辨識到「${confirmed.label}」（${(confirmed.confidence * 100).toFixed(0)}%），目標是「${data.display}」`}
+                </span>
+                <button style={s.retryBtn} onClick={() => { resetPractice(); setPractice(true); }}>再試</button>
               </div>
             )}
-            <p style={s.practiceHint}>
-              比出「<strong>{data.display}</strong>」的手勢，系統連續辨識一致後自動確認
-            </p>
+            {!confirmed && (
+              <p style={s.practiceHint}>
+                比出「<strong>{data.display}</strong>」的手勢，累積 30 幀後自動辨識
+              </p>
+            )}
           </div>
         )}
       </div>

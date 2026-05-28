@@ -115,6 +115,7 @@ export default function WordVideoCapture({
   onFrame       = null,
   confirmCount  = 3,
   confirmThresh = 0.70,
+  singleShot    = false,   // true = 累積 30 幀後單次推論，自動停止
 }) {
   const videoRef       = useRef(null);
   const canvasRef      = useRef(null);
@@ -222,6 +223,31 @@ export default function WordVideoCapture({
       if (bufferRef.current.length > SEQ_LEN) bufferRef.current.shift();
       setBufLen(bufferRef.current.length);
 
+      // ── singleShot 模式：剛滿 30 幀時做一次推論，立即確認 ─────────────────
+      if (singleShot) {
+        if (bufferRef.current.length < SEQ_LEN) return;
+        if (confirmedRef.current) return;   // 已確認，不重複
+        const buf = bufferRef.current.slice();
+        confirmedRef.current = true;        // 先鎖住，避免重複觸發
+        ;(async () => {
+          try {
+            const flat   = buildInputFlat(buf);
+            const tensor = new ort.Tensor('float32', flat, [1, SEQ_LEN, INPUT_DIM]);
+            const output = await sessionRef.current.run({ input: tensor });
+            if (!mountedRef.current) return;
+            const rawData = output.output?.data ?? output.logits?.data ?? Object.values(output)[0].data;
+            const probs   = softmax(Array.from(rawData));
+            const maxIdx  = probs.indexOf(Math.max(...probs));
+            const label   = classesRef.current[maxIdx];
+            const conf    = probs[maxIdx];
+            setLive({ label, confidence: conf, probs });
+            onConfirmedRef.current?.({ label, confidence: conf, probs });
+          } catch (e) { console.error('ONNX 推論失敗：', e); }
+        })();
+        return;
+      }
+
+      // ── 連續辨識模式（原邏輯）────────────────────────────────────────────────
       frameCountRef.current = (frameCountRef.current + 1) % INFER_EVERY;
       if (frameCountRef.current !== 0) return;
       if (bufferRef.current.length < SEQ_LEN) return;
@@ -231,11 +257,10 @@ export default function WordVideoCapture({
         try {
           const flat   = buildInputFlat(buf);
           const tensor = new ort.Tensor('float32', flat, [1, SEQ_LEN, INPUT_DIM]);
-          const feeds  = { input: tensor };   // V3/V4 模型 input name = 'input'
+          const feeds  = { input: tensor };
           const output = await sessionRef.current.run(feeds);
           if (!mountedRef.current || !isRecording || confirmedRef.current) return;
 
-          // output name = 'output'（V3/V4）
           const rawData = output.output?.data ?? output.logits?.data ?? Object.values(output)[0].data;
           const probs   = softmax(Array.from(rawData));
           const maxIdx  = probs.indexOf(Math.max(...probs));

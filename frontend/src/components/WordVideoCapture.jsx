@@ -125,6 +125,7 @@ export default function WordVideoCapture({
   const frameCountRef  = useRef(0);
   const streakRef      = useRef({ label: null, count: 0 });
   const confirmedRef   = useRef(false);
+  const noHandFrames   = useRef(0);   // singleShot 用：連續無手幀數計數
   const mountedRef     = useRef(true);
   const onConfirmedRef = useRef(onConfirmed);
   const onFrameRef     = useRef(onFrame);
@@ -214,7 +215,14 @@ export default function WordVideoCapture({
       const hasHand = results.leftHandLandmarks || results.rightHandLandmarks;
       if (!hasHand) {
         if (singleShot) {
-          // singleShot 模式：手暫時消失就暫停，不清空已累積的幀
+          noHandFrames.current += 1;
+          if (noHandFrames.current >= 15) {
+            // 消失超過 ~0.75 秒，視為使用者停下來重新比，清空 buffer
+            bufferRef.current = [];
+            setBufLen(0);
+            noHandFrames.current = 0;
+          }
+          // 短暫消失（追蹤丟失）→ 暫停累積，保留已有幀
           return;
         }
         bufferRef.current = [];
@@ -222,6 +230,7 @@ export default function WordVideoCapture({
         streakRef.current = { label: null, count: 0 };
         return;
       }
+      noHandFrames.current = 0;   // 手回來，重置計數器
 
       bufferRef.current.push(frameFeatures(results));
       if (bufferRef.current.length > SEQ_LEN) bufferRef.current.shift();

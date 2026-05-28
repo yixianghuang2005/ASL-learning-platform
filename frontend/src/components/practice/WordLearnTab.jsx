@@ -101,9 +101,10 @@ function WordDetail({ data, index, total, onBack, onPrev, onNext }) {
   const [confirmed,    setConfirmed] = useState(null);
 
   const handleFrame     = useCallback(r => setLive(r), []);
+  // 不在這裡 setPractice(false)，讓 {!confirmed && <WordVideoCapture />} 自然卸載鏡頭，
+  // 避免批次更新時結果框與鏡頭同時消失導致黑屏後無結果
   const handleConfirmed = useCallback(r => {
     setConfirmed(r);
-    setPractice(false);   // 收到結果後自動停止鏡頭
   }, []);
   const resetPractice   = () => { setLive(null); setConfirmed(null); };
   const togglePractice  = () => { setPractice(p => !p); resetPractice(); };
@@ -194,7 +195,7 @@ function WordDetail({ data, index, total, onBack, onPrev, onNext }) {
                     ? `✅ 正確！辨識到「${data.display}」（${(confirmed.confidence * 100).toFixed(0)}%）`
                     : `辨識到「${confirmed.label}」（${(confirmed.confidence * 100).toFixed(0)}%），目標是「${data.display}」`}
                 </span>
-                <button style={s.retryBtn} onClick={() => { resetPractice(); setPractice(true); }}>再試</button>
+                <button style={s.retryBtn} onClick={resetPractice}>再試</button>
               </div>
             )}
             {practiceMode && !confirmed && (

@@ -180,8 +180,12 @@ function WordDetail({ data, index, total, onBack, onPrev, onNext }) {
                 singleShot={true}
               />
             )}
-            {practiceMode && !confirmed && liveResult === null && (
-              <div style={s.liveBox}>📷 正在累積幀數，請持續比出手勢...</div>
+            {practiceMode && !confirmed && (
+              <div style={s.liveBox}>
+                {liveResult
+                  ? <>目前偵測：<strong>{liveResult.label}</strong>（{(liveResult.confidence * 100).toFixed(0)}%）</>
+                  : '📷 正在讀取動作，請持續比出手勢...'}
+              </div>
             )}
             {confirmed && (
               <div style={{ ...s.resultBox, ...(isCorrect ? s.resultCorrect : s.resultWrong) }}>

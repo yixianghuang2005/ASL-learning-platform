@@ -236,25 +236,44 @@ export default function WordVideoCapture({
       if (bufferRef.current.length > SEQ_LEN) bufferRef.current.shift();
       setBufLen(bufferRef.current.length);
 
-      // ── singleShot 模式：剛滿 30 幀時做一次推論，立即確認 ─────────────────
+      // ── singleShot 模式（方案 B）：每 5 幀推論，連續 2 次相同且信心≥80% 提早確認 ──
       if (singleShot) {
-        if (bufferRef.current.length < SEQ_LEN) return;
-        if (confirmedRef.current) return;   // 已確認，不重複
+        if (confirmedRef.current) return;
+
+        const bufLen = bufferRef.current.length;
+        if (bufLen < 15) return;   // 至少 15 幀才開始推論
+
+        // 每 INFER_EVERY 幀推論一次，或滿 30 幀時強制推論
+        frameCountRef.current = (frameCountRef.current + 1) % INFER_EVERY;
+        if (frameCountRef.current !== 0 && bufLen < SEQ_LEN) return;
+
         const buf = bufferRef.current.slice();
-        confirmedRef.current = true;        // 先鎖住，避免重複觸發
         ;(async () => {
           try {
-            const flat   = buildInputFlat(buf);
+            const flat   = buildInputFlat(buf);   // 不足 30 幀自動補零
             const tensor = new ort.Tensor('float32', flat, [1, SEQ_LEN, INPUT_DIM]);
             const output = await sessionRef.current.run({ input: tensor });
-            if (!mountedRef.current) return;
+            if (!mountedRef.current || confirmedRef.current) return;
+
             const rawData = output.output?.data ?? output.logits?.data ?? Object.values(output)[0].data;
             const probs   = softmax(Array.from(rawData));
             const maxIdx  = probs.indexOf(Math.max(...probs));
             const label   = classesRef.current[maxIdx];
             const conf    = probs[maxIdx];
+
             setLive({ label, confidence: conf, probs });
-            onConfirmedRef.current?.({ label, confidence: conf, probs });
+            onFrameRef.current?.({ label, confidence: conf, probs });
+
+            // 連續命中計數
+            const ss = streakRef.current;
+            if (ss.label === label) { ss.count += 1; }
+            else { streakRef.current = { label, count: 1 }; }
+
+            // 提早確認：連續 2 次相同且信心 ≥ 80%，或已到 30 幀
+            if ((streakRef.current.count >= 2 && conf >= 0.80) || bufLen >= SEQ_LEN) {
+              confirmedRef.current = true;
+              onConfirmedRef.current?.({ label, confidence: conf, probs });
+            }
           } catch (e) { console.error('ONNX 推論失敗：', e); }
         })();
         return;

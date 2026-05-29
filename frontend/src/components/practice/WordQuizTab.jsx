@@ -103,7 +103,11 @@ function QuizPlaying({ question, qIndex, total, onPass }) {
   const [showHint,    setHint]   = useState(false);
   const [isRecording, setRec]    = useState(true);
   const [timeLeft,    setTimeLeft] = useState(TIME_PER_Q);
-  const passedRef                 = useRef(false);
+  const passedRef   = useRef(false);
+  const onPassRef   = useRef(onPass);
+  const questionRef = useRef(question);
+  useEffect(() => { onPassRef.current = onPass; });
+  useEffect(() => { questionRef.current = question; });
 
   // 每題重置
   useEffect(() => {
@@ -112,7 +116,7 @@ function QuizPlaying({ question, qIndex, total, onPass }) {
     passedRef.current = false;
   }, [question?.word]);
 
-  // 倒數計時
+  // 倒數計時（只依賴 question.word，用 ref 存 onPass 避免重建 interval）
   useEffect(() => {
     const id = setInterval(() => {
       setTimeLeft(t => {
@@ -122,7 +126,7 @@ function QuizPlaying({ question, qIndex, total, onPass }) {
             passedRef.current = true;
             setRec(false);
             setFlash('timeout');
-            setTimeout(() => onPass(null, false, true), 700);
+            setTimeout(() => onPassRef.current(null, false, true), 700);
           }
           return 0;
         }
@@ -130,7 +134,7 @@ function QuizPlaying({ question, qIndex, total, onPass }) {
       });
     }, 1000);
     return () => clearInterval(id);
-  }, [question?.word, onPass]);
+  }, [question?.word]);   // ← 只有換題時才重建 interval
 
   const handleFrame = useCallback(r => {
     if (!passedRef.current) setLive(r);
@@ -138,19 +142,20 @@ function QuizPlaying({ question, qIndex, total, onPass }) {
 
   const handleConfirmed = useCallback(r => {
     if (passedRef.current) return;
-    if (r.label === question?.word) {
+    const q = questionRef.current;
+    if (r.label === q?.word) {
       passedRef.current = true;
       setFlash('correct');
       setRec(false);
-      setTimeout(() => onPass(r.label), 800);
+      setTimeout(() => onPassRef.current(r.label), 800);
     }
-  }, [question, onPass]);
+  }, []);
 
   const handleSkip = () => {
     if (passedRef.current) return;
     passedRef.current = true;
     setRec(false);
-    onPass(null, true, false);
+    onPassRef.current(null, true, false);
   };
 
   const isCorrectNow = liveResult?.label === question?.word;

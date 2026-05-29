@@ -137,8 +137,12 @@ function QuizPlaying({ question, qIndex, total, onPass }) {
   const [imgError,     setImgError]     = useState(false);
   const [timeLeft,     setTimeLeft]     = useState(TIME_PER_Q);
 
-  const windowRef = useRef([]);
-  const passedRef = useRef(false);
+  const windowRef  = useRef([]);
+  const passedRef  = useRef(false);
+  const onPassRef  = useRef(onPass);
+  const questionRef = useRef(question);
+  useEffect(() => { onPassRef.current = onPass; });
+  useEffect(() => { questionRef.current = question; });
 
   // 每題重置
   useEffect(() => {
@@ -147,7 +151,7 @@ function QuizPlaying({ question, qIndex, total, onPass }) {
     windowRef.current = []; passedRef.current = false;
   }, [question?.letter]);
 
-  // 倒數計時
+  // 倒數計時（只依賴 question.letter，用 ref 存 onPass 避免重建 interval）
   useEffect(() => {
     const id = setInterval(() => {
       setTimeLeft(t => {
@@ -156,7 +160,7 @@ function QuizPlaying({ question, qIndex, total, onPass }) {
           if (!passedRef.current) {
             passedRef.current = true;
             setFlashState('timeout');
-            setTimeout(() => onPass(null, true), 600);
+            setTimeout(() => onPassRef.current(null, true), 600);
           }
           return 0;
         }
@@ -164,22 +168,23 @@ function QuizPlaying({ question, qIndex, total, onPass }) {
       });
     }, 1000);
     return () => clearInterval(id);
-  }, [question?.letter, onPass]);
+  }, [question?.letter]);   // ← 只有換題時才重建 interval
 
   const handleResult = useCallback((result) => {
     if (!result || passedRef.current) return;
     if (result.confidence < MIN_CONFIDENCE) return;
+    const q = questionRef.current;
     setDetection(result);
     windowRef.current.push(result.label);
     if (windowRef.current.length > WINDOW_SIZE) windowRef.current.shift();
-    const count = windowRef.current.filter(l => l === question.letter).length;
+    const count = windowRef.current.filter(l => l === q.letter).length;
     setCorrectCount(count);
     if (count >= PASS_THRESHOLD) {
       passedRef.current = true;
       setFlashState('correct');
-      setTimeout(() => onPass(question.letter), 700);
+      setTimeout(() => onPassRef.current(q.letter), 700);
     }
-  }, [question, onPass]);
+  }, []);   // ← 全部用 ref，不需要 deps
 
   const isDetecting  = !!detection;
   const isCorrectNow = detection?.label === question?.letter;

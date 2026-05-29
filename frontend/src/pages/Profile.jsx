@@ -104,13 +104,14 @@ export default function Profile({ currentUser, onLoginClick }) {
 
 // ── 最佳成績卡片 ──────────────────────────────────────────────────────────
 function StatCard({ label, best, emoji, color }) {
+  const points = best ? best.score * 10 : 0;
   return (
     <div style={{ ...s.statCard, borderColor: best ? color : '#334155' }}>
       <div style={s.statEmoji}>{emoji}</div>
       <div style={s.statLabel}>{label}</div>
       {best ? (
         <>
-          <div style={{ ...s.statPct, color }}>{best.pct}%</div>
+          <div style={{ ...s.statPct, color }}>{points} 分</div>
           <div style={s.statDetail}>{best.score} / {best.total} 題正確</div>
           <div style={s.statDate}>{formatDate(best.timestamp)}</div>
         </>
@@ -123,11 +124,13 @@ function StatCard({ label, best, emoji, color }) {
 
 // ── 單筆紀錄列 ────────────────────────────────────────────────────────────
 function ResultRow({ r }) {
-  const good = r.pct >= 70;
+  const points   = r.score * 10;
+  const good     = r.pct >= 70;
+  const duration = r.duration ? `${r.duration}秒` : '';
   return (
     <div style={s.resultRow}>
-      <span style={{ ...s.resultPct, color: good ? '#86efac' : '#fca5a5' }}>{r.pct}%</span>
-      <span style={s.resultDetail}>{r.score} / {r.total} 題</span>
+      <span style={{ ...s.resultPct, color: good ? '#86efac' : '#fca5a5' }}>{points}分</span>
+      <span style={s.resultDetail}>{r.score}/{r.total}題 {duration && `· ${duration}`}</span>
       <span style={s.resultDate}>{formatDate(r.timestamp)}</span>
     </div>
   );

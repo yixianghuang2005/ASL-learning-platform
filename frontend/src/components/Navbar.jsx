@@ -8,7 +8,7 @@ const navItems = [
   { to: '/profile', label: '個人頁' },
 ];
 
-const Navbar = ({ currentUser, onLogout }) => {
+export default function Navbar({ currentUser, onLogout, onLoginClick }) {
   return (
     <nav className="navbar">
       <Link to="/" className="navbar-brand">
@@ -31,31 +31,42 @@ const Navbar = ({ currentUser, onLogout }) => {
       <div className="navbar-auth">
         {currentUser ? (
           <>
-            <span style={styles.userName}>{currentUser.displayName || currentUser.email}</span>
-            <button style={styles.authButton} onClick={onLogout}>登出</button>
+            <span style={s.userName}>
+              {currentUser.displayName || currentUser.email?.split('@')[0]}
+            </span>
+            <button style={s.authButton} onClick={onLogout}>登出</button>
           </>
         ) : (
-          <button style={styles.authButton}>登入</button>
+          <button style={{ ...s.authButton, ...s.loginBtn }} onClick={onLoginClick}>
+            登入
+          </button>
         )}
       </div>
     </nav>
   );
-};
+}
 
-const styles = {
+const s = {
   userName: {
-    color: '#cbd5e1',
+    color: '#94a3b8',
     fontSize: 13,
+    maxWidth: 120,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   authButton: {
     border: '1px solid #334155',
     background: '#0f172a',
     color: '#cbd5e1',
     borderRadius: 6,
-    padding: '8px 12px',
+    padding: '7px 14px',
     fontWeight: 700,
+    fontSize: 13,
     cursor: 'pointer',
   },
+  loginBtn: {
+    borderColor: '#3b82f6',
+    color: '#60a5fa',
+  },
 };
-
-export default Navbar;

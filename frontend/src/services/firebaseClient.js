@@ -1,10 +1,21 @@
-// firebaseClient.js — Firebase + localStorage 雙軌儲存
+// firebaseClient.js — Firebase Auth + Firestore + localStorage 雙軌儲存
 // Firebase 未設定時自動退回 localStorage（訪客模式）
 
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  onAuthStateChanged,
+  updateProfile,
+} from 'firebase/auth';
+import {
+  getFirestore,
+  collection, addDoc, query, where, orderBy, limit, getDocs,
+} from 'firebase/firestore';
 
-// ── Firebase 設定（從 .env 讀取） ──────────────────────────────────────────
+// ── Firebase 設定 ──────────────────────────────────────────────────────────
 const firebaseConfig = {
   apiKey:            process.env.REACT_APP_FIREBASE_API_KEY,
   authDomain:        process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
@@ -20,19 +31,69 @@ const FIREBASE_READY = !!(
   firebaseConfig.apiKey !== 'your_api_key_here'
 );
 
-let db = null;
+export let auth = null;
+let db   = null;
 
 if (FIREBASE_READY) {
   try {
     const app = initializeApp(firebaseConfig);
-    db = getFirestore(app);
-    console.log('[Firebase] Firestore connected');
+    auth = getAuth(app);
+    db   = getFirestore(app);
+    console.log('[Firebase] Auth + Firestore connected');
   } catch (e) {
     console.warn('[Firebase] Init failed, using localStorage fallback:', e.message);
   }
 }
 
-// ── 訪客 ID（localStorage 持久化） ────────────────────────────────────────
+// ── Auth 功能 ──────────────────────────────────────────────────────────────
+
+/**
+ * 註冊新帳號
+ * @param {string} email
+ * @param {string} password
+ * @param {string} [displayName] 顯示名稱（可選）
+ */
+export async function signUp(email, password, displayName = '') {
+  if (!auth) throw new Error('Firebase 未設定，請填寫 .env');
+  const cred = await createUserWithEmailAndPassword(auth, email, password);
+  if (displayName.trim()) {
+    await updateProfile(cred.user, { displayName: displayName.trim() });
+  }
+  return cred.user;
+}
+
+/**
+ * 登入
+ */
+export async function signIn(email, password) {
+  if (!auth) throw new Error('Firebase 未設定，請填寫 .env');
+  const cred = await signInWithEmailAndPassword(auth, email, password);
+  return cred.user;
+}
+
+/**
+ * 登出
+ */
+export async function signOut() {
+  if (auth) await firebaseSignOut(auth);
+}
+
+/**
+ * 監聽 Auth 狀態變化
+ * @param {function} callback - (user | null) => void
+ * @returns unsubscribe function
+ */
+export function onAuthChanged(callback) {
+  if (!auth) {
+    callback(null);
+    return () => {};
+  }
+  return onAuthStateChanged(auth, callback);
+}
+
+// ── LocalStorage 操作 ─────────────────────────────────────────────────────
+const LS_KEY = 'asl_quiz_results';
+
 function getGuestId() {
   let id = localStorage.getItem('asl_guest_id');
   if (!id) {
@@ -42,9 +103,6 @@ function getGuestId() {
   return id;
 }
 
-// ── LocalStorage 操作 ─────────────────────────────────────────────────────
-const LS_KEY = 'asl_quiz_results';
-
 function lsGetAll() {
   try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch { return []; }
 }
@@ -52,50 +110,33 @@ function lsGetAll() {
 function lsSave(record) {
   const all = lsGetAll();
   all.unshift(record);
-  // 只保留最近 200 筆
   localStorage.setItem(LS_KEY, JSON.stringify(all.slice(0, 200)));
 }
 
-// ── 公開 API ──────────────────────────────────────────────────────────────
+// ── 闖關紀錄 API ──────────────────────────────────────────────────────────
 
 /**
  * 儲存一次闖關結果
- * @param {'letter'|'word'} type - 字母或詞彙闖關
- * @param {number} score - 答對題數
- * @param {number} total - 總題數
- * @param {Array}  details - 每題結果
  */
 export async function saveQuizResult({ type, score, total, details = [] }) {
+  const uid = auth?.currentUser?.uid ?? getGuestId();
   const pct = Math.round((score / total) * 100);
-  const record = {
-    guestId:   getGuestId(),
-    type,
-    score,
-    total,
-    pct,
-    details,
-    timestamp: new Date().toISOString(),
-  };
+  const record = { uid, type, score, total, pct, details, timestamp: new Date().toISOString() };
 
-  // 1. 一定存 localStorage
   lsSave(record);
 
-  // 2. 有 Firebase 也存 Firestore
-  if (db) {
+  if (db && auth?.currentUser) {
     try {
       await addDoc(collection(db, 'quizResults'), record);
     } catch (e) {
       console.warn('[Firebase] Write failed:', e.message);
     }
   }
-
   return record;
 }
 
 /**
- * 取得本機的最佳成績
- * @param {'letter'|'word'} type
- * @returns {{ score, total, pct, timestamp } | null}
+ * 取得本機最佳成績
  */
 export function getBestScore(type) {
   const all = lsGetAll().filter(r => r.type === type);
@@ -104,25 +145,21 @@ export function getBestScore(type) {
 }
 
 /**
- * 取得最近 N 筆紀錄
- * @param {'letter'|'word'} type
- * @param {number} n
+ * 取得最近 N 筆
  */
 export function getRecentResults(type, n = 5) {
   return lsGetAll().filter(r => r.type === type).slice(0, n);
 }
 
 /**
- * 取得所有紀錄（Firestore 或 localStorage）
- * 目前未整合帳號，只回傳本機訪客資料
+ * 取得所有紀錄（已登入時優先讀 Firestore）
  */
 export async function getAllMyResults(type) {
-  if (db) {
+  if (db && auth?.currentUser) {
     try {
-      const guestId = getGuestId();
       const q = query(
         collection(db, 'quizResults'),
-        where('guestId', '==', guestId),
+        where('uid', '==', auth.currentUser.uid),
         where('type', '==', type),
         orderBy('timestamp', 'desc'),
         limit(50),
@@ -136,11 +173,8 @@ export async function getAllMyResults(type) {
   return getRecentResults(type, 50);
 }
 
-// ── 舊版相容 stub（Profile.jsx 用到） ──────────────────────────────────────
-export const auth               = null;
-export const signInWithGoogle   = async () => {};
-export const signOut            = async () => {};
-export const onAuthChanged      = (cb) => { cb(null); return () => {}; };
+// 舊版相容 stub
 export const saveProgress       = async () => {};
 export const getUserStats       = async () => null;
 export const getAllUserProgress  = async () => [];
+export const signInWithGoogle   = async () => { throw new Error('Google 登入未啟用'); };

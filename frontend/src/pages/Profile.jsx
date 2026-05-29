@@ -1,96 +1,186 @@
-// 👤 Profile.jsx
-// 【組員 C 主要負責】
-// 功能：個人檔案頁，顯示使用者資訊 + 學習進度追蹤
-//
-// TODO 清單：
-//   1. 讀取 Firebase Auth 的 currentUser 資訊
-//   2. 呼叫 getAllUserProgress 取得所有單字練習紀錄
-//   3. 顯示整體學習進度（已解鎖單字數 / 總單字數）
-//   4. 顯示每個單字的練習次數與最佳準確率
-//   5. 實作登出按鈕
-//   6. 未登入狀態跳轉到登入頁
+// Profile.jsx — 個人頁：帳號資訊 + 學習紀錄
 
 import React, { useEffect, useState } from 'react';
-import { auth, signOut, getAllUserProgress } from '../services/firebaseClient';
+import { signOut, getBestScore, getRecentResults } from '../services/firebaseClient';
 
-const Profile = () => {
-  const [user, setUser] = useState(null);
-  const [progress, setProgress] = useState([]);
-  const [loading, setLoading] = useState(true);
+export default function Profile({ currentUser, onLoginClick }) {
+  const [letterBest,   setLetterBest]   = useState(null);
+  const [wordBest,     setWordBest]     = useState(null);
+  const [letterRecent, setLetterRecent] = useState([]);
+  const [wordRecent,   setWordRecent]   = useState([]);
 
   useEffect(() => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
-      // TODO: 跳轉到登入頁
-      setLoading(false);
-      return;
-    }
-    setUser(currentUser);
-
-    // TODO: 呼叫 getAllUserProgress 取得進度資料
-    // getAllUserProgress(currentUser.uid).then(data => {
-    //   setProgress(data);
-    //   setLoading(false);
-    // });
-
-    // 暫時使用假資料
-    setProgress([
-      { wordId: '你好', practiceCount: 12, bestAccuracy: 92 },
-      { wordId: '謝謝', practiceCount: 5, bestAccuracy: 75 },
-      { wordId: '對不起', practiceCount: 0, bestAccuracy: 0 },
-    ]);
-    setLoading(false);
-  }, []);
+    setLetterBest(getBestScore('letter'));
+    setWordBest(getBestScore('word'));
+    setLetterRecent(getRecentResults('letter', 5));
+    setWordRecent(getRecentResults('word', 5));
+  }, [currentUser]);
 
   const handleLogout = async () => {
     await signOut();
-    // TODO: 跳轉到首頁
   };
 
-  if (loading) return <p>載入中...</p>;
-
-  if (!user) {
-    return (
-      <div style={{ padding: 24 }}>
-        <p>請先登入以查看個人檔案</p>
-        {/* TODO: 加入 Google 登入按鈕 */}
-      </div>
-    );
-  }
-
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
-        <img src={user.photoURL} alt="頭像" style={{ width: 64, height: 64, borderRadius: '50%' }} />
-        <div>
-          <h2>{user.displayName}</h2>
-          <p style={{ color: '#666' }}>{user.email}</p>
-        </div>
-        <button onClick={handleLogout} style={{ marginLeft: 'auto' }}>登出</button>
-      </div>
+    <div style={s.page}>
+      <div style={s.content}>
 
-      <h3>📊 學習進度</h3>
-      {/* TODO: 改為視覺化進度條或圖表 */}
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr>
-            <th>單字</th>
-            <th>練習次數</th>
-            <th>最佳準確率</th>
-          </tr>
-        </thead>
-        <tbody>
-          {progress.map((item) => (
-            <tr key={item.wordId}>
-              <td>{item.wordId}</td>
-              <td>{item.practiceCount}</td>
-              <td>{item.bestAccuracy ? `${item.bestAccuracy}%` : '未練習'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        {/* ── 帳號區 ── */}
+        <div style={s.card}>
+          {currentUser ? (
+            <div style={s.userRow}>
+              <div style={s.avatar}>
+                {(currentUser.displayName || currentUser.email || '?')[0].toUpperCase()}
+              </div>
+              <div style={s.userInfo}>
+                <div style={s.userName}>
+                  {currentUser.displayName || '使用者'}
+                </div>
+                <div style={s.userEmail}>{currentUser.email}</div>
+              </div>
+              <button style={s.logoutBtn} onClick={handleLogout}>登出</button>
+            </div>
+          ) : (
+            <div style={s.guestRow}>
+              <div style={s.guestIcon}>👤</div>
+              <div>
+                <div style={s.guestTitle}>訪客模式</div>
+                <div style={s.guestSub}>成績存在本機，登入後可跨裝置查看</div>
+              </div>
+              <button style={s.loginBtn} onClick={onLoginClick}>登入 / 註冊</button>
+            </div>
+          )}
+        </div>
+
+        {/* ── 最佳紀錄 ── */}
+        <div style={s.sectionTitle}>🏆 最佳成績</div>
+        <div style={s.statsRow}>
+          <StatCard
+            label="字母闖關"
+            best={letterBest}
+            emoji="🔤"
+            color="#3b82f6"
+          />
+          <StatCard
+            label="詞彙闖關"
+            best={wordBest}
+            emoji="📚"
+            color="#22c55e"
+          />
+        </div>
+
+        {/* ── 最近紀錄 ── */}
+        {(letterRecent.length > 0 || wordRecent.length > 0) && (
+          <>
+            <div style={s.sectionTitle}>📋 最近練習</div>
+            <div style={s.card}>
+              {letterRecent.length > 0 && (
+                <>
+                  <div style={s.typeHeader}>🔤 字母闖關</div>
+                  {letterRecent.map((r, i) => <ResultRow key={i} r={r} />)}
+                </>
+              )}
+              {wordRecent.length > 0 && (
+                <>
+                  <div style={{ ...s.typeHeader, marginTop: letterRecent.length ? 16 : 0 }}>📚 詞彙闖關</div>
+                  {wordRecent.map((r, i) => <ResultRow key={i} r={r} />)}
+                </>
+              )}
+            </div>
+          </>
+        )}
+
+        {letterRecent.length === 0 && wordRecent.length === 0 && (
+          <div style={s.empty}>
+            <div style={{ fontSize: 48 }}>🎯</div>
+            <div>還沒有練習紀錄</div>
+            <div style={{ fontSize: 13, color: '#475569', marginTop: 4 }}>去字母練習或詞彙練習試試看吧！</div>
+          </div>
+        )}
+
+      </div>
     </div>
   );
-};
+}
 
-export default Profile;
+// ── 最佳成績卡片 ──────────────────────────────────────────────────────────
+function StatCard({ label, best, emoji, color }) {
+  return (
+    <div style={{ ...s.statCard, borderColor: best ? color : '#334155' }}>
+      <div style={s.statEmoji}>{emoji}</div>
+      <div style={s.statLabel}>{label}</div>
+      {best ? (
+        <>
+          <div style={{ ...s.statPct, color }}>{best.pct}%</div>
+          <div style={s.statDetail}>{best.score} / {best.total} 題正確</div>
+          <div style={s.statDate}>{formatDate(best.timestamp)}</div>
+        </>
+      ) : (
+        <div style={s.statNone}>尚未練習</div>
+      )}
+    </div>
+  );
+}
+
+// ── 單筆紀錄列 ────────────────────────────────────────────────────────────
+function ResultRow({ r }) {
+  const good = r.pct >= 70;
+  return (
+    <div style={s.resultRow}>
+      <span style={{ ...s.resultPct, color: good ? '#86efac' : '#fca5a5' }}>{r.pct}%</span>
+      <span style={s.resultDetail}>{r.score} / {r.total} 題</span>
+      <span style={s.resultDate}>{formatDate(r.timestamp)}</span>
+    </div>
+  );
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+// ── 樣式 ──────────────────────────────────────────────────────────────────
+const s = {
+  page:    { minHeight: '100vh', background: '#0f172a', color: '#f1f5f9', fontFamily: "'Segoe UI', system-ui, sans-serif", paddingBottom: 40 },
+  content: { maxWidth: 720, margin: '0 auto', padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: 16 },
+
+  card: { background: '#1e293b', border: '1px solid #334155', borderRadius: 14, padding: '20px 24px' },
+
+  // 已登入
+  userRow:    { display: 'flex', alignItems: 'center', gap: 16 },
+  avatar:     { width: 52, height: 52, borderRadius: '50%', background: '#1e3a5f', border: '2px solid #3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 700, color: '#60a5fa', flexShrink: 0 },
+  userInfo:   { flex: 1, minWidth: 0 },
+  userName:   { fontSize: 17, fontWeight: 700, color: '#f1f5f9', marginBottom: 2 },
+  userEmail:  { fontSize: 13, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  logoutBtn:  { border: '1px solid #334155', background: 'transparent', color: '#94a3b8', borderRadius: 8, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0 },
+
+  // 訪客
+  guestRow:   { display: 'flex', alignItems: 'center', gap: 16 },
+  guestIcon:  { fontSize: 36, flexShrink: 0 },
+  guestTitle: { fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 4 },
+  guestSub:   { fontSize: 13, color: '#64748b' },
+  loginBtn:   { border: '1px solid #3b82f6', background: '#1e3a5f', color: '#60a5fa', borderRadius: 8, padding: '9px 18px', fontSize: 14, fontWeight: 700, cursor: 'pointer', flexShrink: 0, marginLeft: 'auto' },
+
+  // 區塊標題
+  sectionTitle: { fontSize: 15, fontWeight: 700, color: '#94a3b8', paddingLeft: 4 },
+
+  // 最佳成績
+  statsRow:   { display: 'flex', gap: 12 },
+  statCard:   { flex: 1, background: '#1e293b', border: '2px solid', borderRadius: 14, padding: '18px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 },
+  statEmoji:  { fontSize: 28 },
+  statLabel:  { fontSize: 13, color: '#64748b', fontWeight: 600 },
+  statPct:    { fontSize: 36, fontWeight: 900, lineHeight: 1.1 },
+  statDetail: { fontSize: 13, color: '#94a3b8' },
+  statDate:   { fontSize: 11, color: '#475569' },
+  statNone:   { fontSize: 14, color: '#475569', marginTop: 8 },
+
+  // 紀錄列
+  typeHeader: { fontSize: 13, color: '#64748b', fontWeight: 700, marginBottom: 8 },
+  resultRow:  { display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid #0f172a' },
+  resultPct:  { fontSize: 16, fontWeight: 700, width: 48 },
+  resultDetail: { fontSize: 13, color: '#94a3b8', flex: 1 },
+  resultDate: { fontSize: 12, color: '#475569' },
+
+  // 空狀態
+  empty: { textAlign: 'center', padding: '48px 0', color: '#64748b', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 },
+};

@@ -4,11 +4,13 @@ import React, { useState } from 'react';
 import LearnTab        from '../components/practice/LearnTab';
 import QuizTab         from '../components/practice/QuizTab';
 import CommunicatorTab from '../components/practice/CommunicatorTab';
+import QuizHistoryTab  from '../components/practice/QuizHistoryTab';
 
 const TABS = [
   { id: 'learn',        label: '📖 學習 A~Z' },
   { id: 'quiz',         label: '🎯 闖關測驗' },
   { id: 'communicator', label: '💬 拼字溝通器' },
+  { id: 'history',      label: '📋 歷史紀錄' },
 ];
 
 export default function Practice() {
@@ -40,6 +42,7 @@ export default function Practice() {
         {activeTab === 'learn'        && <LearnTab selectedLetter={selectedLetter} setSelectedLetter={setSelectedLetter} />}
         {activeTab === 'quiz'         && <QuizTab />}
         {activeTab === 'communicator' && <CommunicatorTab />}
+        {activeTab === 'history'      && <QuizHistoryTab type="letter" />}
       </div>
     </div>
   );

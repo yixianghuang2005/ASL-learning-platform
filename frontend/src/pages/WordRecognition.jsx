@@ -4,11 +4,13 @@ import React, { useState } from 'react';
 import WordLearnTab       from '../components/practice/WordLearnTab';
 import WordQuizTab        from '../components/practice/WordQuizTab';
 import WordRecognitionTab from '../components/practice/WordRecognitionTab';
+import QuizHistoryTab     from '../components/practice/QuizHistoryTab';
 
 const TABS = [
-  { id: 'learn', label: '📚 詞彙學習' },
-  { id: 'quiz',  label: '🎯 詞彙闖關' },
-  { id: 'recog', label: '🧠 自由辨識' },
+  { id: 'learn',   label: '📚 詞彙學習' },
+  { id: 'quiz',    label: '🎯 詞彙闖關' },
+  { id: 'recog',   label: '🧠 自由辨識' },
+  { id: 'history', label: '📋 歷史紀錄' },
 ];
 
 export default function WordRecognition() {
@@ -31,9 +33,10 @@ export default function WordRecognition() {
 
       {/* ── 內容區 ──────────────────────────────────────────── */}
       <div style={styles.content}>
-        {activeTab === 'learn' && <WordLearnTab />}
-        {activeTab === 'quiz'  && <WordQuizTab />}
-        {activeTab === 'recog' && <WordRecognitionTab />}
+        {activeTab === 'learn'   && <WordLearnTab />}
+        {activeTab === 'quiz'    && <WordQuizTab />}
+        {activeTab === 'recog'   && <WordRecognitionTab />}
+        {activeTab === 'history' && <QuizHistoryTab type="word" />}
       </div>
     </div>
   );

@@ -139,6 +139,7 @@ function QuizPlaying({ question, qIndex, total, onPass }) {
   const [flashState, setFlashState] = useState(null);
   const [imgError,   setImgError]   = useState(false);
   const [timeLeft,   setTimeLeft]   = useState(TIME_PER_Q);
+  const [showHint,   setShowHint]   = useState(false);
 
   const passedRef      = useRef(false);
   const holdStartRef   = useRef(null);   // 開始持續正確的時間戳
@@ -152,6 +153,7 @@ function QuizPlaying({ question, qIndex, total, onPass }) {
   useEffect(() => {
     setDetection(null); setFlashState(null);
     setImgError(false); setTimeLeft(TIME_PER_Q); setHoldPct(0);
+    setShowHint(false);
     passedRef.current = false;
     holdStartRef.current = null; lastGoodRef.current = 0;
   }, [question?.letter]);
@@ -235,16 +237,25 @@ function QuizPlaying({ question, qIndex, total, onPass }) {
         <div style={s.quizLeft}>
           <div style={s.quizTarget}>
             <div style={s.quizTargetLabel}>比出這個手勢</div>
-            {!imgError ? (
-              <img
-                src={`/asl/${question?.letter}.png`}
-                alt={`ASL ${question?.letter}`}
-                style={s.quizRefImg}
-                onError={() => setImgError(true)}
-              />
-            ) : (
-              <div style={s.quizImgFallback}>{question?.letter}</div>
-            )}
+            <div style={s.quizImgWrapper}>
+              {!imgError ? (
+                <img
+                  src={`/asl/${question?.letter}.png`}
+                  alt={`ASL ${question?.letter}`}
+                  style={s.quizRefImg}
+                  onError={() => setImgError(true)}
+                />
+              ) : (
+                <div style={s.quizImgFallback}>{question?.letter}</div>
+              )}
+              {!showHint && (
+                <div style={s.imgMask}>
+                  <button style={s.hintBtn} onClick={() => setShowHint(true)}>
+                    👁 顯示提示
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* 穩定度 */}
@@ -352,8 +363,11 @@ const s = {
 
   quizTarget:       { background: '#1e293b', border: '2px solid #334155', borderRadius: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center' },
   quizTargetLabel:  { fontSize: 12, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '12px 0 8px' },
+  quizImgWrapper:   { position: 'relative', width: '100%' },
   quizRefImg:       { width: '100%', aspectRatio: '1/1', objectFit: 'cover', display: 'block' },
   quizImgFallback:  { width: '100%', aspectRatio: '1/1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 100, fontWeight: 900, color: '#3b82f6', background: '#0f172a' },
+  imgMask:          { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: 'rgba(15,23,42,0.92)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  hintBtn:          { padding: '10px 20px', background: '#1e293b', border: '1px solid #475569', borderRadius: 10, color: '#cbd5e1', fontSize: 14, fontWeight: 600, cursor: 'pointer' },
 
   quizStability:    { background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: '14px 16px' },
   quizStabilityRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },

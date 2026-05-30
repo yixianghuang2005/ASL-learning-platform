@@ -11,9 +11,9 @@
 
 - **純前端 AI 推論**：MediaPipe + ONNX.js，不需後端，低延遲即時辨識
 - **字母辨識**：ASL 26 個字母（含動態手勢 J、Z），~95% 準確率
-- **詞彙辨識**：250 個常用詞彙，GRU 序列模型，69.2% 準確率（持續提升中）
-- **完整學習流程**：學習 → 闖關測驗（有分數紀錄）→ 自由練習
-- **分數系統**：localStorage 儲存個人最佳，Firebase Firestore 選配
+- **詞彙辨識**：250 個常用詞彙，Transformer 序列模型，76.3% 準確率
+- **完整學習流程**：學習 → 闖關測驗（100 分制 + 歷史紀錄）→ 自由練習
+- **登入系統**：帳號 + 密碼，訪客模式保留，分數跨裝置同步
 
 ---
 
@@ -78,8 +78,7 @@ uvicorn app.main:app --reload --port 8000
 |------|------|------|--------|
 | 字母辨識 | MediaPipe Hands 63 維（靜態）| MLP | ~95% |
 | 動態字母 J/Z | 手腕軌跡 | 規則式偵測器 | — |
-| 詞彙辨識（現役）| MediaPipe Holistic 225 維 × 30 幀 | GRU（hidden=256, 3層）| 69.2% |
-| 詞彙辨識（開發中）| 同上 | Transformer（Colab GPU）| 目標 85–92% |
+| 詞彙辨識（現役）| MediaPipe Holistic 225 維 × 30 幀 | Transformer V3（d_model=256, 6層）| **76.3%** |
 
 ---
 
@@ -133,3 +132,29 @@ Kaggle Google ASL Signs 競賽資料集，涵蓋：
 - **導航重整**：字母練習 / 詞彙練習 分頁，移除冗餘的字彙資料頁
 - **`aslWordData.js`**：250 詞完整資料庫（英文名/中文/類別/手勢說明）
 - **`train_colab_transformer.py`**：Colab GPU Transformer 訓練腳本（目標 85–92%）
+
+### Week 5（5/26–5/27）— Transformer 訓練 + Vercel 部署
+
+| 版本 | 架構 | Test acc |
+|------|------|----------|
+| V1 | d_model=256, 4層 | 73.5% |
+| V2 | d_model=512, 8層, fp16 | 67.5%（過擬合）|
+| V3 ✅ | d_model=256, 6層, Mixup+DropPath+WarmRestarts | **76.3%** |
+| V4 | 450維（位置+速度）, Colab A100, 300 epochs | 76.63% |
+
+- **Vercel 部署**：https://asl-learning-platform-delta.vercel.app/
+- `vercel.json`：COOP/COEP headers，啟用 SharedArrayBuffer（ONNX wasm 必要）
+- 詞彙練習改用 **Single-Shot 模式**：累積 30 幀後單次推論，自動停止鏡頭顯示結果
+
+### Week 5（5/29）— 響應式設計 + Bug 修復
+- **響應式設計**：`index.css` 新增 Navbar/Tab CSS class，手機版隱藏登入、Tab 支援橫向滑動
+- **Bug 修復**：詞彙學習偵測完後黑屏無結果（React 批次更新時序問題）
+- **Single-Shot Plan B**：frame 15 起每 5 幀推論，連續 2 次相同且信心 ≥ 80% 提早確認
+
+### Week 5（5/30）— Firebase 登入 + 測驗升級 + 歷史紀錄
+- **登入系統**：帳號名稱 + 密碼（不需電子信箱），`LoginModal.jsx` 彈窗，訪客模式保留
+- **Firebase 設定**：專案 `asl-learning-83879`，Firestore `asia-east1`，Vercel 環境變數同步
+- **個人頁重寫**：最佳成績卡片 + 最近練習紀錄
+- **測驗升級**：10 題 × 10 分 = 滿分 100 分，每題 10 秒倒數，超時自動跳題
+- **歷史紀錄 Tab**：字母/詞彙練習各加 📋 歷史紀錄，可展開看每題 ✅❌⏱ 詳情
+- **Bug 修復**：字母闖關進度條卡住（改時間驅動：50ms interval，維持 1.5 秒自動過關）

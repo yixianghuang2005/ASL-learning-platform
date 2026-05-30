@@ -240,7 +240,7 @@ function QuizPlaying({ question, qIndex, total, onPass }) {
 
         {/* 右：鏡頭 */}
         <div style={s.quizRight}>
-          <PoseVideoCapture onResult={handleResult} />
+          <PoseVideoCapture onResult={handleResult} alwaysUpdate={true} />
         </div>
       </div>
     </div>

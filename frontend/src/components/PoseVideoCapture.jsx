@@ -48,7 +48,7 @@ function softmax(arr) {
   return exps.map(v => v / sum);
 }
 
-export default function PoseVideoCapture({ onResult }) {
+export default function PoseVideoCapture({ onResult, alwaysUpdate = false }) {
   const videoRef       = useRef(null);
   const canvasRef      = useRef(null);
   const cameraRef      = useRef(null);
@@ -174,7 +174,7 @@ export default function PoseVideoCapture({ onResult }) {
           const confidence = probs[maxIdx];
           const labelChanged = label !== lastLabelRef.current;
           const confChanged  = Math.abs(confidence - lastConfRef.current) > 0.05;
-          if (labelChanged || confChanged) {
+          if (alwaysUpdate || labelChanged || confChanged) {
             lastLabelRef.current = label;
             lastConfRef.current  = confidence;
             setPrediction({ label, confidence });

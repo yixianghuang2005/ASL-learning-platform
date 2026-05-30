@@ -33,8 +33,6 @@ const ASL_LETTERS = [
   { letter: 'Z', hint: '食指朝前，在空中畫出 Z 字軌跡' },
 ];
 
-const WINDOW_SIZE    = 15;
-const PASS_THRESHOLD = 10;
 const MIN_CONFIDENCE = 0.55;
 const QUIZ_TOTAL     = 10;
 const TIME_PER_Q     = 10;   // 每題秒數
@@ -129,29 +127,36 @@ function QuizReady({ onStart, best }) {
   );
 }
 
+// 手勢需持續正確多久才過關（毫秒）
+const HOLD_MS      = 1500;
+// 超過多久沒收到正確訊號視為放開（毫秒）
+const HOLD_GAP_MS  = 400;
+
 // ── 作答畫面 ──────────────────────────────────────────────────────
 function QuizPlaying({ question, qIndex, total, onPass }) {
-  const [correctCount, setCorrectCount] = useState(0);
-  const [detection,    setDetection]    = useState(null);
-  const [flashState,   setFlashState]   = useState(null);
-  const [imgError,     setImgError]     = useState(false);
-  const [timeLeft,     setTimeLeft]     = useState(TIME_PER_Q);
+  const [detection,  setDetection]  = useState(null);
+  const [holdPct,    setHoldPct]    = useState(0);   // 0~100，時間驅動
+  const [flashState, setFlashState] = useState(null);
+  const [imgError,   setImgError]   = useState(false);
+  const [timeLeft,   setTimeLeft]   = useState(TIME_PER_Q);
 
-  const windowRef  = useRef([]);
-  const passedRef  = useRef(false);
-  const onPassRef  = useRef(onPass);
-  const questionRef = useRef(question);
-  useEffect(() => { onPassRef.current = onPass; });
+  const passedRef      = useRef(false);
+  const holdStartRef   = useRef(null);   // 開始持續正確的時間戳
+  const lastGoodRef    = useRef(0);      // 最後一次收到正確的時間戳
+  const onPassRef      = useRef(onPass);
+  const questionRef    = useRef(question);
+  useEffect(() => { onPassRef.current   = onPass; });
   useEffect(() => { questionRef.current = question; });
 
   // 每題重置
   useEffect(() => {
-    setCorrectCount(0); setDetection(null); setFlashState(null);
-    setImgError(false); setTimeLeft(TIME_PER_Q);
-    windowRef.current = []; passedRef.current = false;
+    setDetection(null); setFlashState(null);
+    setImgError(false); setTimeLeft(TIME_PER_Q); setHoldPct(0);
+    passedRef.current = false;
+    holdStartRef.current = null; lastGoodRef.current = 0;
   }, [question?.letter]);
 
-  // 倒數計時（只依賴 question.letter，用 ref 存 onPass 避免重建 interval）
+  // 倒數計時（1 秒 interval）
   useEffect(() => {
     const id = setInterval(() => {
       setTimeLeft(t => {
@@ -168,27 +173,47 @@ function QuizPlaying({ question, qIndex, total, onPass }) {
       });
     }, 1000);
     return () => clearInterval(id);
-  }, [question?.letter]);   // ← 只有換題時才重建 interval
+  }, [question?.letter]);
 
+  // 進度條更新（50ms interval，時間驅動，不依賴 onResult 頻率）
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (passedRef.current) return;
+      const now  = Date.now();
+      const good = holdStartRef.current && (now - lastGoodRef.current < HOLD_GAP_MS);
+      if (!good) {
+        holdStartRef.current = null;
+        setHoldPct(0);
+        return;
+      }
+      const pct = Math.min(((now - holdStartRef.current) / HOLD_MS) * 100, 100);
+      setHoldPct(pct);
+      if (pct >= 100) {
+        passedRef.current = true;
+        setFlashState('correct');
+        setTimeout(() => onPassRef.current(questionRef.current.letter), 700);
+      }
+    }, 50);
+    return () => clearInterval(id);
+  }, [question?.letter]);
+
+  // onResult 只負責記錄「最後偵測到正確手勢的時間」
   const handleResult = useCallback((result) => {
     if (!result || passedRef.current) return;
     if (result.confidence < MIN_CONFIDENCE) return;
-    const q = questionRef.current;
     setDetection(result);
-    windowRef.current.push(result.label);
-    if (windowRef.current.length > WINDOW_SIZE) windowRef.current.shift();
-    const count = windowRef.current.filter(l => l === q.letter).length;
-    setCorrectCount(count);
-    if (count >= PASS_THRESHOLD) {
-      passedRef.current = true;
-      setFlashState('correct');
-      setTimeout(() => onPassRef.current(q.letter), 700);
+    if (result.label === questionRef.current?.letter) {
+      const now = Date.now();
+      lastGoodRef.current = now;
+      if (!holdStartRef.current) holdStartRef.current = now;
+    } else {
+      holdStartRef.current = null;
+      lastGoodRef.current  = 0;
     }
-  }, []);   // ← 全部用 ref，不需要 deps
+  }, []);
 
   const isDetecting  = !!detection;
   const isCorrectNow = detection?.label === question?.letter;
-  const progressPct  = Math.min((correctCount / PASS_THRESHOLD) * 100, 100);
   const timerDanger  = timeLeft <= 3;
 
   return (
@@ -228,10 +253,10 @@ function QuizPlaying({ question, qIndex, total, onPass }) {
               <span style={{ fontSize: 13, fontWeight: 600, color: !isDetecting ? '#64748b' : isCorrectNow ? '#22c55e' : '#f59e0b' }}>
                 {!isDetecting ? '等待手勢...' : isCorrectNow ? '✅ 維持手勢！' : '手勢不符，繼續調整'}
               </span>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>{correctCount}/{PASS_THRESHOLD}</span>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>{Math.round(holdPct)}%</span>
             </div>
             <div style={s.progressTrack}>
-              <div style={{ ...s.progressFill, width: `${progressPct}%`, background: progressPct >= 100 ? '#22c55e' : '#3b82f6' }} />
+              <div style={{ ...s.progressFill, width: `${holdPct}%`, background: holdPct >= 100 ? '#22c55e' : '#3b82f6' }} />
             </div>
           </div>
 
